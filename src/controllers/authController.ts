@@ -12,10 +12,13 @@ interface RequestWithUser extends Request {
   user?: IUser;
 }
 
-// Utility function to sign a JWT with proper types
-const signToken = (id: string | mongoose.Types.ObjectId | mongoose.Schema.Types.ObjectId, role: string): string => {
-  const secret: Secret = process.env.JWT_SECRET as Secret;
-  const expiresIn: SignOptions['expiresIn'] = (process.env.JWT_EXPIRES_IN as string) || '90d';
+const signToken = (
+  id: string | mongoose.Types.ObjectId | mongoose.Schema.Types.ObjectId,
+  role: string
+): string => {
+  const secret: Secret = process.env.JWT_SECRET || 'default_secret_key';
+  const expiresIn = (process.env.JWT_EXPIRES_IN?.trim() || '90d') as SignOptions['expiresIn'];
+
   return jwt.sign({ id, role }, secret, { expiresIn });
 };
 
