@@ -10,13 +10,14 @@ import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
 
 // Route Imports
+
 import authRoutes from './routes/authRoutes';
-import publicRoutes from './routes/publicRoutes'; // 1. Import the new router
 import adminRoutes from './routes/adminRoutes'; // Example for admin routes
 import userRoutes from './routes/userRoutes'; // Example for user routes
 import managementRoutes from './routes/managementRoutes'; // Example for management routes
 import analyticsRoutes from './routes/analyticsRoutes'; // Example for analytics routes
-
+import reviewRoutes from './routes/reviewRoutes'; // 2. ADDED
+import { protect, restrictTo } from './middleware/authMiddleware'; // 3. ADDED
 // 1. Load Environment Variables FIRST
 dotenv.config();
 
@@ -52,13 +53,13 @@ connectDB();
 
 // --- 4. ROUTES ---
 app.use('/api/auth', authRoutes);
-app.use('/api/public', publicRoutes); // 2. Add the public routes to the app
+// app.use('/api/public', publicRoutes); // 2. Add the public routes to the app
 app.use('/api/admin', adminRoutes); // Example for admin routes
+
 app.use('/api/users', userRoutes); // Add other routes here, e.g., app.use('/api/users', userRoutes);
 app.use('/api/management', managementRoutes); // Add other routes here, e.g., app.use('/api/management', managementRoutes);
-app.use('/api/analytics', analyticsRoutes); // Add other routes here, e.g., app.use('/api/analytics', analyticsRoutes);
-
-
+app.use('/api/analytics', protect, restrictTo('admin', 'viewer'), analyticsRoutes);
+app.use('/api/reviews', protect, restrictTo('staff', 'admin'), reviewRoutes);
 // Add other routes here, e.g., app.use('/api/reviews', reviewRoutes);
 
 // --- 5. UNHANDLED ROUTE (404) HANDLER ---

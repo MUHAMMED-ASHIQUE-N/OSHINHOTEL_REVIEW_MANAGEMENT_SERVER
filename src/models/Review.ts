@@ -1,32 +1,56 @@
-// models/Review.js
+// src/models/Review.ts
+
 import mongoose from 'mongoose';
 
+// ✅ UPDATED: The answer schema now supports two types of answers
 const answerSchema = new mongoose.Schema({
   question: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Question',
     required: true,
   },
+  // For 'rating' type questions
   rating: {
     type: Number,
-    required: true,
     min: 1,
     max: 10,
+    optional: true, // Make optional
   },
-}, { _id: false }); // _id: false prevents subdocuments from getting their own IDs
+  // For 'yes_no' type questions
+  answerBoolean: {
+    type: Boolean,
+    optional: true, // Make optional
+  },
+}, { _id: false });
 
 const reviewSchema = new mongoose.Schema({
-  staff: { // The staff member who handled this review
+  staff: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
   },
-  answers: [answerSchema],
-  guestInfo: { // Optional guest details
-    name: { type: String },
-    email: { type: String },
-    address: { type: String },
+  // ✅ ADDED: To distinguish the type of review
+  category: {
+    type: String,
+    enum: ['room', 'f&b'],
+    required: true,
   },
-}, { timestamps: true }); // `createdAt` is crucial for date-based filtering
+  answers: [answerSchema],
+  
+  // ✅ ADDED: Optional text description for the experience
+  description: {
+    type: String,
+    trim: true,
+  },
+  
+  // ✅ ADDED: Specific info required only for 'room' reviews
+  roomGuestInfo: {
+    name: { type: String },
+    phone: { type: String },
+    roomNumber: { type: String },
+  },
+}, { timestamps: true });
+
+// ✅ REMOVED: The old 'guestInfo' is replaced by 'roomGuestInfo'
 
 export const Review = mongoose.model('Review', reviewSchema);
