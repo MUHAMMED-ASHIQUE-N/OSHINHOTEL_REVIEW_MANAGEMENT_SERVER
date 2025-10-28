@@ -108,6 +108,7 @@ export const getQuestionAverages = async (req: Request, res: Response, next: Nex
         $project: {
           _id: 0,
           name: '$questionDetails.text',
+          compositeId: '$_id', // <-- ADD THIS LINE to include the ID
           value: { $round: ['$averageRating', 2] },
         }
       },
@@ -315,8 +316,9 @@ export const getAvailableYears = async (req: Request, res: Response, next: NextF
 
 
 
-
-export const getGuestIssues = async (req: Request, res: Response, next: NextFunction) => {
+// @desc    Get reviews containing Yes/No answers, grouped by review
+// @route   GET /api/analytics/yes-no-responses
+export const getYesNoResponses = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { startDate, endDate, category } = req.query;
 
@@ -324,65 +326,65 @@ export const getGuestIssues = async (req: Request, res: Response, next: NextFunc
       return res.status(400).json({ message: 'Valid category (room or f&b) is required.' });
     }
 
-    // --- No need to find a specific question ID anymore ---
-
     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
     const categoryMatchStage = { $match: { category: category as string } };
 
     const pipeline: mongoose.PipelineStage[] = [
       dateMatchStage,
       categoryMatchStage,
-      // 1. Unwind the answers array to process each answer
+      // 1. Unwind answers
       { $unwind: '$answers' },
-      // 2. Look up the details of the question linked in the answer
+      // 2. Lookup question details
       {
         $lookup: {
-          from: 'questions', // The name of the questions collection
+          from: 'questions',
           localField: 'answers.question',
           foreignField: '_id',
           as: 'questionDetails'
         }
       },
-      // 3. Unwind the result (lookup returns an array, we expect one match)
+      // 3. Unwind question details
       { $unwind: '$questionDetails' },
-      // 4. Match answers that are 'true' AND belong to a 'yes_no' question type
+      // 4. Match only Yes/No questions
       {
         $match: {
-          'answers.answerBoolean': true,
           'questionDetails.questionType': 'yes_no'
-          // We already matched the review's category earlier
         }
       },
-      // 5. Group back by the original review ID to get unique reviews
-      // (A review might match multiple times if it has multiple 'yes' answers)
+      // 5. Group back by the original review ID
       {
         $group: {
-            _id: '$_id', // Group by the original Review document _id
-            // Keep the first instance of the necessary fields
-            createdAt: { $first: '$createdAt' },
-            description: { $first: '$description' },
-            roomGuestInfo: { $first: '$roomGuestInfo' },
-            category: { $first: '$category'}, // Keep category if needed later
-            // We could collect the specific questions that triggered 'yes' if needed:
-            // triggeringQuestions: { $push: '$questionDetails.text' }
+          _id: '$_id', // Group by Review ID
+          createdAt: { $first: '$createdAt' },
+          description: { $first: '$description' },
+          roomGuestInfo: { $first: '$roomGuestInfo' },
+          category: { $first: '$category'}, // Keep category if needed
+          // Collect all Yes/No questions and answers for this review
+          yesNoAnswers: {
+            $push: {
+              questionText: '$questionDetails.text',
+              answer: '$answers.answerBoolean' // true/false
+            }
+          }
         }
       },
-      // 6. Project the final desired fields (optional, but good practice)
+      // 6. Project the final structure
       {
         $project: {
-          _id: 1,
+          _id: 1, // Keep the review ID
           createdAt: 1,
           description: 1,
-          roomGuestInfo: 1, // Will be present only if category was 'room'
+          roomGuestInfo: 1,
+          yesNoAnswers: 1 // The array of question/answer pairs
         }
       },
-      // 7. Sort by date
+      // 7. Sort reviews by date
       { $sort: { createdAt: -1 } }
     ];
 
-    const issues = await Review.aggregate(pipeline);
+    const responses = await Review.aggregate(pipeline);
 
-    res.status(200).json({ status: 'success', results: issues.length, data: issues });
+    res.status(200).json({ status: 'success', results: responses.length, data: responses });
 
   } catch (error) {
     next(error);
