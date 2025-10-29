@@ -11,12 +11,13 @@ const createComposite = async (req: Request, res: Response, next: NextFunction) 
 
 const getAllComposites = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // Populate the 'questions' field to return full question objects
-        const composites = await Composite.find().populate('questions');
+        // ✅ MODIFIED: Populate and sort by category, then order
+        const composites = await Composite.find()
+            .populate('questions')
+            .sort({ category: 1, order: 1 }); // Sorts by category, then by order
         res.status(200).json({ status: 'success', data: { composites } });
     } catch(error) { next(error); }
 };
-
 const updateComposite = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const composite = await Composite.findByIdAndUpdate(req.params.compositeId, req.body, { new: true, runValidators: true });

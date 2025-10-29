@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 
 const questionSchema = new mongoose.Schema({
   text: { type: String, required: true },
-  order: { type: Number, default: 0 },
+  order: { type: Number, default: 0 }, // ✅ Includes order
   isActive: { type: Boolean, default: true },
   category: {
     type: String,
@@ -15,14 +15,14 @@ const questionSchema = new mongoose.Schema({
     enum: ['rating', 'yes_no'],
     default: 'rating',
   },
-  // ✅ ADDED: Flag to identify the main problem indicator question
   isPrimaryIssueIndicator: {
     type: Boolean,
     default: false,
   },
 }, { timestamps: true });
 
-// Optional: Add index for faster lookups if you have many questions
+// ✅ ADDED: Index for category and order sorting
+questionSchema.index({ category: 1, order: 1 });
 questionSchema.index({ category: 1, isPrimaryIssueIndicator: 1 });
 
 export const Question = mongoose.model('Question', questionSchema);

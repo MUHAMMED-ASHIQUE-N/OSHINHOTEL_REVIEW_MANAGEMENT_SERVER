@@ -12,11 +12,12 @@ const createQuestion = async (req: Request, res: Response, next: NextFunction) =
 
 const getAllQuestions = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const questions = await Question.find();
+        // ✅ MODIFIED: Sort by category, then order
+        const questions = await Question.find()
+            .sort({ category: 1, order: 1 }); // Sorts by category, then by order
         res.status(200).json({ status: 'success', data: { questions } });
     } catch(error) { next(error); }
 };
-
 const updateQuestion = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const question = await Question.findByIdAndUpdate(req.params.questionId, req.body, { new: true, runValidators: true });

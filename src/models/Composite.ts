@@ -8,13 +8,19 @@ const compositeSchema = new mongoose.Schema({
     ref: 'Question',
     required: true,
   }],
-
-  // ✅ ADDED: To distinguish between ROOM and F&B composites
   category: {
     type: String,
     enum: ['room', 'f&b'],
     required: true,
   },
+  // ✅ ADDED: Order field
+  order: {
+    type: Number,
+    default: 0,
+  },
 }, { timestamps: true });
+
+// Optional: Add index for sorting
+compositeSchema.index({ category: 1, order: 1 });
 
 export const Composite = mongoose.model('Composite', compositeSchema);
