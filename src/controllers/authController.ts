@@ -1,4 +1,4 @@
-//authController.ts
+//controller/authController.ts
 
 import { User, IUser } from '../models/User';
 import jwt, { Secret, SignOptions } from 'jsonwebtoken';

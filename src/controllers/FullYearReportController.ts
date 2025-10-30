@@ -1,721 +1,312 @@
-// import { Request, Response, NextFunction } from 'express';
-// import { Review } from '../models/Review';
-// import { Composite } from '../models/Composite';
-// import { Question } from '../models/Question';
-// import mongoose from 'mongoose';
+   //controller/FullYearReportController.ts
+   import { Request, Response } from 'express';
+    import mongoose from 'mongoose';
+    import { Review } from '../models/Review';
+    import { Question } from '../models/Question';
+    import { Composite } from '../models/Composite';
 
-// // --- START: Type Definitions & Helper Functions ---
+    // ✅ REMOVED: isLeapYear and getDatesInYear functions are no longer needed
+    // for this approach.
 
-// // Define a specific type for the $match stage
-// type MatchStage = {
-//   $match: {
-//     [key: string]: any;
-//   }
-// };
+    /**
+     * @route GET /api/dashboard/years
+     * @desc Get all years for which reviews exist for a specific category
+     */
+    export const getAvailableYearss = async (req: Request, res: Response) => {
+    try {
+        const { category } = req.query;
 
-// // Helper to create date match stage
-// const getDateMatchStage = (startDate?: string, endDate?: string): MatchStage => {
-//   const match: any = {};
-//   if (startDate || endDate) {
-//     match.createdAt = {};
-//     if (startDate) {
-//       // Use UTC start of day
-//       match.createdAt.$gte = new Date(`${startDate}T00:00:00.000Z`);
-//     }
-//     if (endDate) {
-//       // Use UTC end of day
-//       match.createdAt.$lte = new Date(`${endDate}T23:59:59.999Z`);
-//     }
-//   }
-//   return { $match: match };
-// };
+        if (!category || (category !== 'room' && category !== 'f&b')) {
+        return res.status(400).json({ message: 'Invalid or missing category. Must be "room" or "f&b".' });
+        }
 
-// // Helper to create category match stage
-// const getCategoryMatchStage = (category?: string): MatchStage => {
-//   if (category && (category === 'room' || category === 'f&b')) {
-//     return { $match: { category: category } };
-//   }
-//   return { $match: {} }; // Return an empty $match stage
-// };
+        const yearsResult = await Review.aggregate([
+        {
+            $match: {
+            category: category as string,
+            },
+        },
+        {
+            $project: {
+            year: { $year: '$createdAt' },
+            },
+        },
+        {
+            $group: {
+            _id: '$year',
+            },
+        },
+        {
+            $sort: {
+            _id: -1, // Sort descending, most recent year first
+            },
+        },
+        {
+            $project: {
+            _id: 0,
+            year: '$_id',
+            },
+        },
+        ]);
 
-// // --- END: Helper Functions ---
+        const years = yearsResult.map((y) => y.year);
+        res.status(200).json(years);
+    } catch (error) {
+        console.error('Error fetching available years:', error);
+        res.status(500).json({ message: 'Server error while fetching available years.' });
+    }
+    };
 
+    /**
+     * @route GET /api/dashboard/data
+     * @desc Get comprehensive dashboard data for a given category and year
+     */
+    export const getDashboardData = async (req: Request, res: Response) => {
+    try {
+        const { category, year } = req.query;
 
-// // --- START: Full Yearly Report Helpers ---
+        // --- Validation ---
+        if (!category || (category !== 'room' && category !== 'f&b')) {
+        return res.status(400).json({ message: 'Invalid or missing category. Must be "room" or "f&b".' });
+        }
 
-// // Helper to format monthly data
-// const formatMonthlyData = (
-//   monthlyResults: { name: string; month: number; value: number }[]
-// ): { name: string; averages: (number | string)[] }[] => {
-//   const groupedByName: { [key: string]: { [key: number]: number } } = {};
-//   monthlyResults.forEach(item => {
-//     if (!groupedByName[item.name]) {
-//       groupedByName[item.name] = {};
-//     }
-//     groupedByName[item.name][item.month] = item.value;
-//   });
-//   return Object.entries(groupedByName).map(([name, monthValues]) => {
-//     const averages: (number | string)[] = [];
-//     for (let i = 1; i <= 12; i++) {
-//       averages.push(monthValues[i]?.toFixed(2) ?? '-');
-//     }
-//     return { name, averages };
-//   });
-// };
+        const yearNum = parseInt(year as string, 10);
+        if (isNaN(yearNum) || yearNum < 2000 || yearNum > 3000) {
+        return res.status(400).json({ message: 'Invalid or missing year.' });
+        }
 
-// // Helper 1: Get Question Headers
-// const _fetchQuestionHeaders = (category: string) => {
-//   return Question.find(
-//     { category: category, questionType: 'rating' },
-//     'text'
-//   ).sort('order').lean();
-// };
+        const startDate = new Date(yearNum, 0, 1); // Jan 1
+        const endDate = new Date(yearNum + 1, 0, 1); // Jan 1 of next year
 
-// // Helper 2: Get Daily Data
-// const _fetchDailyData = (dateMatch: MatchStage, categoryMatch: MatchStage, questionHeaders: {_id: mongoose.Types.ObjectId, text: string}[]) => {
-//   const questionIdMap = questionHeaders.map(q => ({
-//       k: q._id.toString(),
-//       v: `$${q._id.toString()}`
-//   }));
+        // --- Step 1: Fetch all questions and composites for the category ---
+        // We only average 'rating' type questions
+        const questions = await Question.find({
+        category,
+        questionType: 'rating',
+        }).lean();
+        const composites = await Composite.find({ category }).lean();
 
-//   const pipeline: mongoose.PipelineStage[] = [
-//     { $match: { ...dateMatch.$match, ...categoryMatch.$match } },
-//     { $sort: { createdAt: 1 } },
-//     {
-//       $addFields: {
-//         ratingsMap: {
-//           $arrayToObject: {
-//             $map: {
-//               input: '$answers', as: 'ans', 
-//               // ✅ FIX 1: Convert 'k' (key) from ObjectId to String
-//               in: { k: { $toString: '$$ans.question' }, v: '$$ans.rating' }
-//             }
-//           }
-//         }
-//       }
-//     },
-//     {
-//       $addFields: questionHeaders.reduce((acc, q) => {
-//         acc[q._id.toString()] = { $ifNull: [`$ratingsMap.${q._id.toString()}`, null] };
-//         return acc;
-//       }, {} as any)
-//     },
-//     {
-//       $project: {
-//         _id: 0,
-//         date: '$createdAt',
-//         guestName: { $ifNull: ['$roomGuestInfo.name', null] },
-//         roomNumber: { $ifNull: ['$roomGuestInfo.roomNumber', null] },
-//         questionRatings: {
-//           // ✅ FIX 2: Wrap the JS array 'questionIdMap' in $literal
-//           $arrayToObject: { $literal: questionIdMap }
-//         },
-//         dailyCompositeAvg: "N/A", // Placeholder
-//         dailyQuestionAvg: "N/A"  // Placeholder
-//       }
-//     }
-//   ];
-//   return Review.aggregate(pipeline);
-// };
+        // --- Step 2: Run the main aggregation ---
+        const aggregationResult = await Review.aggregate([
+        {
+            // Filter by category and date range
+            $match: {
+            category: category as string,
+            createdAt: {
+                $gte: startDate,
+                $lt: endDate,
+            },
+            },
+        },
+        {
+            // Deconstruct the answers array
+            $unwind: '$answers',
+        },
+        {
+            // Join with questions to filter by questionType
+            $lookup: {
+            from: 'questions',
+            localField: 'answers.question',
+            foreignField: '_id',
+            as: 'questionDoc',
+            },
+        },
+        {
+            $unwind: '$questionDoc',
+        },
+        {
+            // Only include answers that are for 'rating' questions
+            $match: {
+            'questionDoc.questionType': 'rating',
+            'answers.rating': { $exists: true, $ne: null },
+            },
+        },
+        {
+            // Project the fields we need for grouping
+            $project: {
+            _id: 0,
+            date: '$createdAt',
+            questionId: '$answers.question',
+            rating: '$answers.rating',
+            },
+        },
+        {
+            // Use $facet to run multiple aggregations in parallel
+            $facet: {
+            // Part 1: Daily overall average
+            dailyBreakdown: [
+                {
+                $group: {
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+                    dailyAverage: { $avg: '$rating' },
+                    totalReviews: { $sum: 1 },
+                },
+                },
+                {
+                $project: {
+                    _id: 0,
+                    date: '$_id',
+                    overallAverage: '$dailyAverage',
+                    totalReviews: '$totalReviews',
+                },
+                },
+                { $sort: { date: 1 } },
+            ],
 
-// // Helper 3: Get Monthly Question Averages
-// const _fetchMonthlyQuestions = (dateMatch: MatchStage, categoryMatch: MatchStage) => {
-//   const pipeline: mongoose.PipelineStage[] = [
-//     { $match: { ...dateMatch.$match, ...categoryMatch.$match } },
-//     { $unwind: '$answers' },
-//     { $match: { 'answers.rating': { $exists: true, $ne: null } } },
-//     {
-//       $group: {
-//         _id: {
-//           month: { $month: { date: '$createdAt', timezone: "UTC" } },
-//           questionId: '$answers.question'
-//         },
-//         averageRating: { $avg: '$answers.rating' }
-//       }
-//     },
-//     { $lookup: { from: 'questions', localField: '_id.questionId', foreignField: '_id', as: 'questionDetails' } },
-//     { $unwind: '$questionDetails' },
-//     {
-//       $project: {
-//         _id: 0,
-//         name: '$questionDetails.text',
-//         month: '$_id.month',
-//         value: { $round: ['$averageRating', 2] }
-//       }
-//     }
-//   ];
-//   return Review.aggregate(pipeline);
-// };
+            // Part 2: Monthly average per question
+            monthlyQuestionAverages: [
+                {
+                $group: {
+                    _id: {
+                    month: { $month: '$date' }, // 1-12
+                    questionId: '$questionId',
+                    },
+                    monthlyAverage: { $avg: '$rating' },
+                },
+                },
+                { $sort: { '_id.month': 1 } },
+                {
+                // Group again to collect months for each question
+                $group: {
+                    _id: '$_id.questionId',
+                    monthlyAvgs: {
+                    $push: {
+                        month: '$_id.month',
+                        avg: '$monthlyAverage',
+                    },
+                    },
+                },
+                },
+            ],
 
-// // Helper 4: Get Monthly Composite Averages
-// const _fetchMonthlyComposites = (dateMatch: MatchStage, categoryMatch: MatchStage) => {
-//    const pipeline: mongoose.PipelineStage[] = [
-//     { $match: { ...dateMatch.$match, ...categoryMatch.$match } },
-//     { $unwind: '$answers' },
-//     { $match: { 'answers.rating': { $exists: true, $ne: null } } },
-//     {
-//       $lookup: {
-//         from: 'composites',
-//         let: { questionId: '$answers.question' },
-//         pipeline: [
-//           { $match: {
-//               ...categoryMatch.$match,
-//               $expr: { $in: ['$$questionId', '$questions'] }
-//           }}
-//         ],
-//         as: 'compositeDetails'
-//       }
-//     },
-//     { $unwind: '$compositeDetails' },
-//     {
-//       $group: {
-//         _id: {
-//           month: { $month: { date: '$createdAt', timezone: "UTC" } },
-//           compositeId: '$compositeDetails._id'
-//         },
-//         name: { $first: '$compositeDetails.name' },
-//         averageRating: { $avg: '$answers.rating' }
-//       }
-//     },
-//     {
-//       $project: {
-//         _id: 0,
-//         name: '$name',
-//         month: '$_id.month',
-//         value: { $round: ['$averageRating', 2] }
-//       }
-//     }
-//   ];
-//   return Review.aggregate(pipeline);
-// };
+            // Part 3: Yearly average per question
+            yearlyQuestionAverages: [
+                {
+                $group: {
+                    _id: '$questionId',
+                    yearlyAverage: { $avg: '$rating' },
+                    totalReviews: { $sum: 1 },
+                },
+                },
+            ],
+            },
+        },
+        ]);
 
-// // Helper 5: Get Yearly Question Averages
-// const _fetchYearlyQuestions = (dateMatch: MatchStage, categoryMatch: MatchStage) => {
-//   const pipeline: mongoose.PipelineStage[] = [
-//       dateMatch,
-//       categoryMatch,
-//       { $unwind: '$answers' },
-//       { $match: { 'answers.rating': { $exists: true, $ne: null } } },
-//       { $group: { _id: '$answers.question', averageRating: { $avg: '$answers.rating' } } },
-//       { $lookup: { from: 'questions', localField: '_id', foreignField: '_id', as: 'qD' } },
-//       { $unwind: '$qD' },
-//       { $project: { _id: 0, name: '$qD.text', value: { $round: ['$averageRating', 2] } } },
-//       { $sort: { name: 1 } }
-//   ];
-//   return Review.aggregate(pipeline);
-// };
+        const result = aggregationResult[0];
 
-// // Helper 6: Get Yearly Composite Averages
-// const _fetchYearlyComposites = (dateMatch: MatchStage, categoryMatch: MatchStage) => {
-//   const pipeline: mongoose.PipelineStage[] = [
-//       categoryMatch,
-//       { $unwind: '$questions' },
-//       {
-//         $lookup: {
-//           from: 'reviews',
-//           let: { questionId: '$questions' },
-//           pipeline: [
-//             dateMatch,
-//             categoryMatch,
-//             { $unwind: '$answers' },
-//             { $match: { $expr: { $eq: ['$answers.question', '$$questionId'] } } },
-//             { $project: { rating: '$answers.rating', _id: 0 } }
-//           ],
-//           as: 'matchingReviews'
-//         }
-//       },
-//       { $unwind: '$matchingReviews' },
-//       {
-//         $group: {
-//           _id: '$_id',
-//           name: { $first: '$name' },
-//           averageRating: { $avg: '$matchingReviews.rating' }
-//         }
-//       },
-//       {
-//         $project: {
-//           _id: 0,
-//           compositeId: '$_id',
-//           name: 1,
-//           value: { $round: ['$averageRating', 2] }
-//         }
-//       }
-//   ];
-//   return Composite.aggregate(pipeline);
-// };
-// // --- ✅ END: Full Yearly Report Helpers ---
+        // --- Step 3: Post-processing in JavaScript ---
+
+        // ✅ UPDATED: 3.1: Format Daily Breakdown (Data for available dates only)
+        // We no longer fill in the empty days. We just return the data
+        // exactly as the database aggregated it.
+        const dailyBreakdown = result.dailyBreakdown;
 
 
-// // --- START: Controller Functions ---
+        // 3.2: Format Monthly Question Averages
+        const monthlyQuestionAvgMap = new Map<string, Map<number, number>>(
+        result.monthlyQuestionAverages.map((q: any) => [
+            q._id.toString(),
+            new Map(q.monthlyAvgs.map((m: any) => [m.month, m.avg])),
+        ])
+        );
 
-// // @desc    Get key stats
-// export const getStats = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const { startDate, endDate, category } = req.query;
-//     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-//     const categoryMatchStage = getCategoryMatchStage(category as string);
+        const monthlyQuestionAverages = questions.map((q) => {
+        // qAvgs is now correctly typed as Map<number, number> | undefined
+        const qAvgs = monthlyQuestionAvgMap.get(q._id.toString());
+        const averages = [];
+        for (let i = 1; i <= 12; i++) {
+            // Optional chaining works as intended
+            averages.push(qAvgs?.get(i) || 0);
+        }
+        return {
+            questionId: q._id,
+            questionText: q.text,
+            averages, // [JanAvg, FebAvg, ..., DecAvg]
+        };
+        });
 
-//     const stats = await Review.aggregate([
-//       dateMatchStage,
-//       categoryMatchStage,
-//       { $unwind: '$answers' },
-//       {
-//         $group: {
-//           _id: null,
-//           totalSubmissions: { $addToSet: '$_id' },
-//           averageRating: { $avg: '$answers.rating' }
-//         }
-//       },
-//       {
-//         $project: {
-//           _id: 0,
-//           totalSubmissions: { $size: '$totalSubmissions' },
-//           averageRating: { $round: ['$averageRating', 2] }
-//         }
-//       }
-//     ]);
+        // 3.3: Format Yearly Question Averages
+        const yearlyQuestionAvgMap = new Map<string, { yearlyAverage: number; totalReviews: number }>(
+        result.yearlyQuestionAverages.map((q: any) => [
+            q._id.toString(),
+            {
+            yearlyAverage: q.yearlyAverage,
+            totalReviews: q.totalReviews,
+            },
+        ])
+        );
 
-//     res.status(200).json({ status: 'success', data: stats[0] || { totalSubmissions: 0, averageRating: 0 } });
-//   } catch (error) { next(error); }
-// };
+        const yearlyQuestionAverages = questions.map((q) => {
+        // qData is now correctly typed as { yearlyAverage: number, totalReviews: number } | undefined
+        const qData = yearlyQuestionAvgMap.get(q._id.toString());
+        return {
+            questionId: q._id,
+            questionText: q.text,
+            yearlyAverage: qData?.yearlyAverage || 0, // Optional chaining works as intended
+            totalReviews: qData?.totalReviews || 0,   // Optional chaining works as intended
+        };
+        });
 
-// // @desc    Get question averages for composite breakdown
-// export const getQuestionAverages = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const { startDate, endDate, compositeId, category } = req.query;
-//     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-//     const categoryMatchStage = getCategoryMatchStage(category as string);
-    
-//     const pipeline: mongoose.PipelineStage[] = [
-//       dateMatchStage,
-//       categoryMatchStage,
-//       { $unwind: '$answers' },
-//     ];
+        // 3.4: Calculate Composite Averages (based on question averages)
+        const monthlyQuestionAveragesByQId = new Map(
+        monthlyQuestionAverages.map((q) => [q.questionId.toString(), q.averages])
+        );
+        const yearlyQuestionAveragesByQId = new Map(
+        yearlyQuestionAverages.map((q) => [q.questionId.toString(), q.yearlyAverage])
+        );
 
-//     if (compositeId) {
-//       const composite = await Composite.findById(compositeId as string);
-//       if (composite) {
-//         pipeline.push({
-//           $match: { 'answers.question': { $in: composite.questions } }
-//         });
-//       }
-//     }
-
-//     pipeline.push(
-//       { $group: { _id: '$answers.question', averageRating: { $avg: '$answers.rating' } } },
-//       { $lookup: { from: 'questions', localField: '_id', foreignField: '_id', as: 'questionDetails' } },
-//       { $unwind: '$questionDetails' },
-//       {
-//         $project: {
-//           _id: 0,
-//           name: '$questionDetails.text',
-//           questionId: '$_id',
-//           value: { $round: ['$averageRating', 2] },
-//         }
-//       },
-//       { $sort: { name: 1 } }
-//     );
-//     const averages = await Review.aggregate(pipeline);
-//     res.status(200).json({ status: 'success', data: averages });
-//   } catch (error) { next(error); }
-// };
-
-// // @desc    Get composite averages (Yearly/Custom)
-// export const getCompositeAverages = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const { startDate, endDate, category } = req.query;
-//     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-//     const categoryMatchStage = getCategoryMatchStage(category as string);
-
-//     const pipeline: mongoose.PipelineStage[] = [
-//       categoryMatchStage,
-//       { $unwind: '$questions' },
-//       {
-//         $lookup: {
-//           from: 'reviews',
-//           let: { questionId: '$questions' },
-//           pipeline: [
-//             dateMatchStage,
-//             categoryMatchStage,
-//             { $unwind: '$answers' },
-//             { $match: { $expr: { $eq: ['$answers.question', '$$questionId'] } } },
-//             { $project: { rating: '$answers.rating', _id: 0 } }
-//           ],
-//           as: 'matchingReviews'
-//         }
-//       },
-//       { $unwind: '$matchingReviews' },
-//       { $group: { _id: '$_id', name: { $first: '$name' }, averageRating: { $avg: '$matchingReviews.rating' } } },
-//       {
-//         $project: {
-//           _id: 0,
-//           compositeId: '$_id',
-//           name: 1,
-//           value: { $round: ['$averageRating', 2] }
-//         }
-//       }
-//     ];
-//     if (!category) { pipeline.shift(); }
-//     const result = await Composite.aggregate(pipeline);
-//     res.status(200).json({ status: 'success', data: result });
-//   } catch (error) { next(error); }
-// };
-
-// // @desc    Get staff performance
-// export const getStaffPerformance = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const { startDate, endDate, category } = req.query;
-//     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-//     const categoryMatchStage = getCategoryMatchStage(category as string);
-//     const performance = await Review.aggregate([
-//       dateMatchStage,
-//       categoryMatchStage,
-//       { $unwind: '$answers' },
-//       {
-//         $group: {
-//           _id: '$staff',
-//           totalReviews: { $addToSet: '$_id' },
-//           averageRating: { $avg: '$answers.rating' }
-//         }
-//       },
-//       {
-//         $lookup: {
-//           from: 'users',
-//           localField: '_id',
-//           foreignField: '_id',
-//           as: 'staffDetails'
-//         }
-//       },
-//       { $unwind: '$staffDetails' },
-//       {
-//         $project: {
-//           _id: 0,
-//           staffId: '$_id',
-//           staffName: '$staffDetails.fullName',
-//           totalReviews: { $size: '$totalReviews' },
-//           averageRating: { $round: ['$averageRating', 2] }
-//         }
-//       },
-//       { $sort: { [req.query.sortBy === 'rating' ? 'averageRating' : 'totalReviews']: -1 } }
-//     ]);
-//     res.status(200).json({ status: 'success', data: performance });
-//   } catch (error) { next(error); }
-// };
-
-// // @desc    Get composite score over time (Monthly/Weekly)
-// export const getCompositeOverTime = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const { year, period, month, compositeId, category } = req.query;
-//     if (!year || !period || !compositeId || !category) {
-//       return res.status(400).json({ message: 'Year, period, compositeId, and category are required.' });
-//     }
-
-//     const yearNum = parseInt(year as string);
-//     const startDate = new Date(Date.UTC(yearNum, 0, 1));
-//     const endDate = new Date(Date.UTC(yearNum + 1, 0, 1));
-    
-//     const categoryMatchStage = getCategoryMatchStage(category as string);
-
-//     const pipeline: mongoose.PipelineStage[] = [
-//       { $match: { createdAt: { $gte: startDate, $lt: endDate } } },
-//       categoryMatchStage,
-//       { $unwind: '$answers' },
-//       {
-//         $lookup: {
-//           from: 'composites',
-//           let: { questionId: '$answers.question' },
-//           pipeline: [
-//             { $match: { 
-//                 $expr: { 
-//                   $and: [
-//                     { $eq: ['$_id', new mongoose.Types.ObjectId(compositeId as string)] },
-//                     { $in: ['$$questionId', '$questions'] }
-//                   ]
-//                 } 
-//             }},
-//           ],
-//           as: 'compositeMatch'
-//         }
-//       },
-//       { $match: { 'compositeMatch': { $ne: [] } } },
-//       {
-//         $group: {
-//           _id: {
-//             $dateToString: { format: period === 'Monthly' ? '%m' : '%U', date: '$createdAt', timezone: "UTC" }
-//           },
-//           averageRating: { $avg: '$answers.rating' }
-//         }
-//       },
-//       {
-//         $project: {
-//           _id: 0,
-//           name: '$_id',
-//           value: { $round: ['$averageRating', 2] }
-//         }
-//       },
-//       { $sort: { name: 1 } }
-//     ];
-
-//     if (period === 'Weekly') {
-//       if (month === undefined || month === null || isNaN(parseInt(month as string))) {
-//         return res.status(400).json({ message: 'Month (0-11) is required for weekly period.' });
-//       }
-//       const monthNum = parseInt(month as string);
-//       pipeline.unshift(
-//         { $addFields: { monthOfYearUTC: { $month: {date: '$createdAt', timezone: "UTC"} } } },
-//         { $match: { monthOfYearUTC: monthNum + 1 } }
-//       );
-//     }
-    
-//     const result = await Review.aggregate(pipeline);
-//     res.status(200).json({ status: 'success', data: result });
-//   } catch (error) { next(error); }
-// };
-
-// // @desc    Get available years
-// export const getAvailableYears = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const years = await Review.distinct('createdAt', {}).then(dates =>
-//       Array.from(new Set(
-//         dates
-//           .map(date => new Date(date).getFullYear())
-//           .filter(year => !isNaN(year))
-//       )).sort((a, b) => b - a)
-//     );
-//     res.status(200).json({ status: 'success', data: { years } });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-// // @desc    Get Yes/No responses
-// export const getYesNoResponses = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const { startDate, endDate, category } = req.query;
-//     if (!category || (category !== 'room' && category !== 'f&b')) {
-//        return res.status(400).json({ message: 'Valid category (room or f&b) is required.' });
-//     }
-
-//     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-//     const categoryMatchStage = getCategoryMatchStage(category as string);
-//     const pipeline: mongoose.PipelineStage[] = [
-//       dateMatchStage,
-//       categoryMatchStage,
-//       { $unwind: '$answers' },
-//       { $lookup: { from: 'questions', localField: 'answers.question', foreignField: '_id', as: 'questionDetails' } },
-//       { $unwind: '$questionDetails' },
-//       { $match: { 'questionDetails.questionType': 'yes_no' } },
-//       {
-//         $group: {
-//           _id: '$_id',
-//           createdAt: { $first: '$createdAt' },
-//           description: { $first: '$description' },
-//           roomGuestInfo: { $first: '$roomGuestInfo' },
-//           category: { $first: '$category'},
-//           yesNoAnswers: {
-//             $push: {
-//               questionText: '$questionDetails.text',
-//               answer: '$answers.answerBoolean'
-//             }
-//           }
-//         }
-//       },
-//       {
-//         $project: {
-//           _id: 1,
-//           createdAt: 1,
-//           description: 1,
-//           roomGuestInfo: 1,
-//           yesNoAnswers: 1
-//         }
-//       },
-//       { $sort: { createdAt: -1 } }
-//     ];
-//     const responses = await Review.aggregate(pipeline);
-//     res.status(200).json({ status: 'success', results: responses.length, data: responses });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-// // @desc    Get single question score over time (Monthly/Weekly)
-// export const getQuestionOverTime = async (req: Request, res: Response, next: NextFunction) => {
-//   try {
-//     const { year, period, month, questionId, category } = req.query;
-//     if (!year || !period || !questionId || !category) {
-//       return res.status(400).json({ message: 'Year, period, questionId, and category are required.' });
-//     }
-//     if (period !== 'Monthly' && period !== 'Weekly') {
-//        return res.status(400).json({ message: 'Period must be Monthly or Weekly for this endpoint.' });
-//     }
-//     if (period === 'Weekly' && (month === undefined || month === null || isNaN(parseInt(month as string)))) {
-//        return res.status(400).json({ message: 'Month (0-11) is required for weekly period.' });
-//     }
-//     let questionObjectId: mongoose.Types.ObjectId;
-//     try {
-//        questionObjectId = new mongoose.Types.ObjectId(questionId as string);
-//     } catch (e) {
-//         return res.status(400).json({ message: 'Invalid questionId format.' });
-//     }
-
-//     const yearNum = parseInt(year as string);
-//     const yearStartDate = new Date(Date.UTC(yearNum, 0, 1));
-//     const yearEndDate = new Date(Date.UTC(yearNum + 1, 0, 1));
-//     const categoryMatchStage = getCategoryMatchStage(category as string);
-
-//     const pipeline: mongoose.PipelineStage[] = [
-//       { $match: {
-//           createdAt: { $gte: yearStartDate, $lt: yearEndDate },
-//           category: category as string,
-//           'answers.question': questionObjectId
-//       }},
-//       // categoryMatchStage is redundant here
-//       { $unwind: '$answers' },
-//       { $match: { 'answers.question': questionObjectId } },
-//       {
-//         $group: {
-//           _id: {
-//             $dateToString: { format: period === 'Monthly' ? '%m' : '%U', date: '$createdAt', timezone: "UTC" }
-//           },
-//           averageRating: { $avg: '$answers.rating' }
-//         }
-//       },
-//       {
-//         $project: {
-//           _id: 0,
-//           name: '$_id',
-//           value: { $round: ['$averageRating', 2] }
-//         }
-//       },
-//       { $sort: { name: 1 } }
-//     ];
-
-//     if (period === 'Weekly') {
-//       const monthNum = parseInt(month as string); // 0-11 from frontend
-//       pipeline.unshift(
-//         { $addFields: { monthOfYearUTC: { $month: {date: '$createdAt', timezone: "UTC"} } } },
-//         { $match: { monthOfYearUTC: monthNum + 1 } }
-//       );
-//     }
-//     const result = await Review.aggregate(pipeline);
-//     res.status(200).json({ status: 'success', data: result });
-//   } catch (error) { next(error); }
-// };
-
-// // @desc    Get average score for a single question (Yearly/Custom)
-// export const getQuestionAverage = async (req: Request, res: Response, next: NextFunction) => {
-//     try {
-//         const { startDate, endDate, questionId, category } = req.query;
-//         if (!startDate || !endDate || !questionId || !category) {
-//             return res.status(400).json({ message: 'startDate, endDate, questionId, and category are required.' });
-//         }
-//         let questionObjectId: mongoose.Types.ObjectId;
-//         try {
-//            questionObjectId = new mongoose.Types.ObjectId(questionId as string);
-//         } catch (e) {
-//             return res.status(400).json({ message: 'Invalid questionId format.' });
-//         }
+        const monthlyCompositeAverages = composites.map((c) => {
+        const averages: number[] = [];
+        for (let i = 0; i < 12; i++) { // For each month (index 0-11)
+            let monthSum = 0;
+            let questionCount = 0;
+            for (const qId of c.questions) {
+            const qMonthAvgs = monthlyQuestionAveragesByQId.get(qId.toString());
+            if (qMonthAvgs && qMonthAvgs[i] > 0) {
+                monthSum += qMonthAvgs[i];
+                questionCount++;
+            }
+            }
+            averages.push(questionCount > 0 ? monthSum / questionCount : 0);
+        }
+        return {
+            compositeId: c._id,
+            compositeName: c.name,
+            averages,
+        };
+        });
         
-//         const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-//         const categoryMatchStage = getCategoryMatchStage(category as string);
+        const yearlyCompositeAverages = composites.map((c) => {
+        let yearSum = 0;
+        let questionCount = 0;
+        for (const qId of c.questions) {
+            const qYearAvg = yearlyQuestionAveragesByQId.get(qId.toString());
+            if (qYearAvg && qYearAvg > 0) {
+            yearSum += qYearAvg;
+            questionCount++;
+            }
+        }
+        return {
+            compositeId: c._id,
+            compositeName: c.name,
+            yearlyAverage: questionCount > 0 ? yearSum / questionCount : 0,
+        };
+        });
 
-//         const pipeline: mongoose.PipelineStage[] = [
-//             dateMatchStage,
-//             categoryMatchStage,
-//             { $match: { 'answers.question': questionObjectId } },
-//             { $unwind: '$answers' },
-//             { $match: { 'answers.question': questionObjectId } },
-//             {
-//               $group: {
-//                   _id: null,
-//                   averageRating: { $avg: '$answers.rating' },
-//                   questionId: { $first: '$answers.question' }
-//               }
-//             },
-//             {
-//               $lookup: {
-//                   from: 'questions',
-//                   localField: 'questionId',
-//                   foreignField: '_id',
-//                   as: 'questionDetails'
-//               }
-//             },
-//             { $unwind: { path: '$questionDetails', preserveNullAndEmptyArrays: true } },
-//             {
-//               $project: {
-//                   _id: 0,
-//                   questionId: { $ifNull: ['$questionId', questionObjectId] },
-//                   name: { $ifNull: ['$questionDetails.text', 'N/A'] },
-//                   value: { $ifNull: [ { $round: ['$averageRating', 2] }, null ] }
-//               }
-//             }
-//         ];
-//         const result = await Review.aggregate(pipeline);
-//         res.status(200).json({ status: 'success', data: result[0] || { questionId: questionId, name: 'N/A', value: null } });
-//     } catch (error) { next(error); }
-// };
 
-// // @desc    Get full aggregated report for a given year and category
-// // @route   GET /api/analytics/full-yearly-report
-// export const getFullYearlyReport = async (req: Request, res: Response, next: NextFunction) => {
-//     try {
-//         const { year, category } = req.query;
+        // --- Step 4: Return formatted data ---
+        res.status(200).json({
+        dailyBreakdown, // This is now the sparse array
+        monthlyQuestionAverages,
+        yearlyQuestionAverages,
+        monthlyCompositeAverages,
+        yearlyCompositeAverages,
+        });
 
-//         if (!year || !category || (category !== 'room' && category !== 'f&b')) {
-//             return res.status(400).json({ message: 'Year and category (room/f&b) are required.' });
-//         }
+    } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        res.status(500).json({ message: 'Server error while fetching dashboard data.' });
+    }
+    };
 
-//         const yearNum = parseInt(year as string);
-//         const yearStartDate = `${yearNum}-01-01`;
-//         const yearEndDate = `${yearNum}-12-31`;
-
-//         const dateMatch = getDateMatchStage(yearStartDate, yearEndDate);
-//         const categoryMatch = getCategoryMatchStage(category as string);
-        
-//         // 1. Get question headers
-//         const questionHeaders = await _fetchQuestionHeaders(category as string);
-        
-//         // 2. Run remaining fetches
-//         const [
-//             dailyData,
-//             monthlyCompositesRaw,
-//             monthlyQuestionsRaw,
-//             yearlyComposites,
-//             yearlyQuestions
-//         ] = await Promise.all([
-//             _fetchDailyData(dateMatch, categoryMatch, questionHeaders),
-//             _fetchMonthlyComposites(dateMatch, categoryMatch),
-//             _fetchMonthlyQuestions(dateMatch, categoryMatch),
-//             _fetchYearlyComposites(dateMatch, categoryMatch),
-//             _fetchYearlyQuestions(dateMatch, categoryMatch)
-//         ]);
-
-//         // 3. Format data
-//         const formattedQuestionHeaders = questionHeaders.map(q => ({ id: q._id.toString(), text: q.text }));
-        
-//         const monthlyData = {
-//             questions: formatMonthlyData(monthlyQuestionsRaw as any),
-//             composites: formatMonthlyData(monthlyCompositesRaw as any)
-//         };
-        
-//         const yearlyData = {
-//             questions: yearlyQuestions,
-//             composites: yearlyComposites
-//         };
-
-//         // 4. Send Response
-//         res.status(200).json({
-//             status: 'success',
-//             data: {
-//                 questionHeaders: formattedQuestionHeaders,
-//                 dailyData: dailyData as any,
-//                 monthlyData: monthlyData,
-//                 yearlyData: yearlyData
-//             }
-//         });
-//     } catch (error) {
-//         next(error);
-//     }
-// };
-
-// // --- END: Controller Functions ---
