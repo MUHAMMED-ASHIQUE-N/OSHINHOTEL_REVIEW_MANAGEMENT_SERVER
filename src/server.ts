@@ -1,84 +1,72 @@
-// server.ts
 import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
+import path from "path";
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+// import mongoSanitize from "express-mongo-sanitize";
 import connectDB from "./config/db";
 
-// Security Middleware
-import helmet from 'helmet';
-import cors from 'cors';
-import rateLimit from 'express-rate-limit';
-import mongoSanitize from 'express-mongo-sanitize';
+// --- ROUTE IMPORTS ---
+import authRoutes from "./routes/authRoutes";
+import adminRoutes from "./routes/adminRoutes";
+import userRoutes from "./routes/userRoutes";
+import managementRoutes from "./routes/managementRoutes";
+import analyticsRoutes from "./routes/analyticsRoutes";
+import reviewRoutes from "./routes/reviewRoutes";
+import { protect, restrictTo } from "./middleware/authMiddleware";
 
-// Route Imports
-
-import authRoutes from './routes/authRoutes';
-import adminRoutes from './routes/adminRoutes'; // Example for admin routes
-import userRoutes from './routes/userRoutes'; // Example for user routes
-import managementRoutes from './routes/managementRoutes'; // Example for management routes
-import analyticsRoutes from './routes/analyticsRoutes'; // Example for analytics routes
-import reviewRoutes from './routes/reviewRoutes'; // 2. ADDED
-import { protect, restrictTo } from './middleware/authMiddleware'; // 3. ADDED
-// 1. Load Environment Variables FIRST
+// --- 1. Load Environment Variables ---
 dotenv.config();
 
 const app = express();
 
-// --- 2. GLOBAL MIDDLEWARE (in order) ---
-
-// Set security HTTP headers
+// --- 2. GLOBAL MIDDLEWARE ---
 app.use(helmet());
+app.use(cors());
 
-// Enable CORS
-app.use(cors()); // Configure with specific options for production
-
-// Rate Limiting to prevent brute-force/DDoS attacks
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 100,
-  message: 'Too many requests from this IP, please try again after 15 minutes.',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: "Too many requests from this IP, please try again after 15 minutes.",
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-app.use('/api', limiter);
+app.use("/api", limiter);
 
-// Body Parsers: To parse req.body. MUST be before routes.
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Data Sanitization against NoSQL Injection. MUST be after body parsers and before routes.
 // app.use(mongoSanitize());
 
 // --- 3. DATABASE CONNECTION ---
 connectDB();
 
-// --- 4. ROUTES ---
-app.use('/api/auth', authRoutes);
-// app.use('/api/public', publicRoutes); // 2. Add the public routes to the app
-app.use('/api/admin', adminRoutes); // Example for admin routes
+// --- 4. API ROUTES ---
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/management", managementRoutes);
+app.use("/api/analytics", protect, restrictTo("admin", "viewer"), analyticsRoutes);
+app.use("/api/reviews", protect, restrictTo("staff", "admin"), reviewRoutes);
 
-app.use('/api/users', userRoutes); // Add other routes here, e.g., app.use('/api/users', userRoutes);
-app.use('/api/management', managementRoutes); // Add other routes here, e.g., app.use('/api/management', managementRoutes);
-app.use('/api/analytics', protect, restrictTo('admin', 'viewer'), analyticsRoutes);
-app.use('/api/reviews', protect, restrictTo('staff', 'admin'), reviewRoutes);
-// Add other routes here, e.g., app.use('/api/reviews', reviewRoutes);
+// --- 5. SERVE FRONTEND (React Build) ---
+const __dirname1 = path.resolve(); // ✅ get absolute path safely
 
-// --- 5. UNHANDLED ROUTE (404) HANDLER ---
-// This will catch any request that doesn't match the routes defined above
-app.use((req: Request, res: Response) => {
-    res.status(404).json({ message: "API route not found" });
+app.use(express.static(path.join(__dirname1, "client", "build"))); // adjust if build folder is elsewhere
+
+// ✅ Catch-all route: send index.html for any non-API request
+app.get(/.*/, (req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname1, "client", "build", "index.html"));
 });
 
-// --- 6. GLOBAL ERROR HANDLER ---
-// This should be the LAST piece of middleware.
+// --- 6. ERROR HANDLING ---
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('ERROR 💥', err);
-  // Send a generic message for unknown errors to avoid leaking implementation details
-  res.status(500).send('Something went very wrong!');
+  console.error("ERROR 💥", err);
+  res.status(500).send("Something went very wrong!");
 });
 
 // --- 7. START SERVER ---
-const PORT = process.env.PORT || 5000; // Added a fallback port
-
-app.listen(PORT, ()=> {
-    console.log(`Server is running on port ${PORT}`);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`✅ Server is running on port ${PORT}`);
 });
