@@ -14,6 +14,8 @@ import userRoutes from "./routes/userRoutes";
 import managementRoutes from "./routes/managementRoutes";
 import analyticsRoutes from "./routes/analyticsRoutes";
 import reviewRoutes from "./routes/reviewRoutes";
+import tokenRoutes from "./routes/tokenRoutes"; 
+import publicRoutes from "./routes/publicRoutes"; 
 import { protect, restrictTo } from "./middleware/authMiddleware";
 
 // --- 1. Load Environment Variables ---
@@ -43,6 +45,7 @@ connectDB();
 
 // --- 4. API ROUTES ---
 app.use("/api/auth", authRoutes);
+app.use("/api/public", publicRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/management", managementRoutes);
@@ -54,6 +57,13 @@ app.use(
   reviewRoutes
 );
 
+
+app.use(
+  "/api/token",
+  protect,
+  restrictTo("staff", "admin", "staff_room", "staff_f&b"),
+  tokenRoutes
+);
 // --- 5. SERVE FRONTEND (React Build) ---
 const __dirname1 = path.resolve(); // ✅ get absolute path safely
 
