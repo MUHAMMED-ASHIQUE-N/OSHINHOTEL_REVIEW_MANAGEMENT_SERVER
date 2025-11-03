@@ -47,13 +47,17 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/management", managementRoutes);
 app.use("/api/analytics", protect, restrictTo("admin", "viewer"), analyticsRoutes);
-app.use("/api/reviews", protect, restrictTo("staff", "admin"), reviewRoutes);
+app.use(
+  "/api/reviews",
+  protect,
+  restrictTo("staff", "admin", "staff_room", "staff_f&b"),
+  reviewRoutes
+);
 
 // --- 5. SERVE FRONTEND (React Build) ---
 const __dirname1 = path.resolve(); // ✅ get absolute path safely
 
 app.use(express.static(path.join(__dirname1, "client", "build"))); // adjust if build folder is elsewhere
-
 // ✅ Catch-all route: send index.html for any non-API request
 app.get(/.*/, (req: Request, res: Response) => {
   res.sendFile(path.join(__dirname1, "client", "build", "index.html"));

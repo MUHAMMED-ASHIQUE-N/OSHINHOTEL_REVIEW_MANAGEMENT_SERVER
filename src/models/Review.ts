@@ -12,7 +12,7 @@ const answerSchema = new mongoose.Schema({
   // For 'rating' type questions
   rating: {
     type: Number,
-    min: 1,
+    min: 0,
     max: 10,
     optional: true, // Make optional
   },

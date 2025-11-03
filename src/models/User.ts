@@ -1,5 +1,3 @@
-// src/models/User.ts
-
 import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -8,8 +6,8 @@ export interface IUser {
   fullName: string;
   username: string;
   password?: string;
-  // ✅ ADDED 'viewer' to the allowed roles
-  role: 'staff' | 'admin' | 'viewer'; 
+  // ✅ CHANGED: Expanded the role enum
+  role: 'staff' | 'admin' | 'viewer' | 'staff_room' | 'staff_f&b';
   isActive: boolean;
 }
 
@@ -19,16 +17,15 @@ const userSchema = new Schema<IUser>({
   password: { type: String, required: true, select: false },
   role: {
     type: String,
-    // ✅ ADDED 'viewer' to the enum
-    enum: ['staff', 'admin', 'viewer'],
+    // ✅ CHANGED: Added new roles to the database enum
+    enum: ['staff', 'admin', 'viewer', 'staff_room', 'staff_f&b'],
     required: true,
   },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
-// 3. Hash password before saving. This remains the same.
+
+// Hash password before saving (no changes here)
 userSchema.pre('save', async function(next) {
-  // Mongoose schemas have their own context, so we can't use an arrow function here.
-  // We must cast 'this' to access the password property with type safety.
   const user = this as IUser & Document; 
   if (!user.isModified('password')) return next();
   
@@ -38,6 +35,4 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
-// 4. Create and export the model.
-//    The resulting model will correctly have both IUser properties and Document methods.
 export const User = mongoose.model<IUser>('User', userSchema);
