@@ -1,10 +1,11 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import crypto from 'crypto'; // Import crypto for generating the token
+import crypto from 'crypto';
 
 export interface IGuestToken extends Document {
   token: string;
-  staff: mongoose.Schema.Types.ObjectId; // Staff member who created it
-  category: 'room' | 'f&b'; // Category associated with the staff
+  staff: mongoose.Schema.Types.ObjectId;
+  // ✅ ADDED 'cfc'
+  category: 'room' | 'f&b' | 'cfc';
   isUsed: boolean;
   expiresAt: Date;
 }
@@ -12,9 +13,8 @@ export interface IGuestToken extends Document {
 const guestTokenSchema = new Schema<IGuestToken>({
   token: {
     type: String,
-    // required: true, // <-- REMOVE THIS LINE
     unique: true,
-    index: true, // Add index for faster lookups
+    index: true,
   },
   staff: {
     type: mongoose.Schema.Types.ObjectId,
@@ -23,7 +23,8 @@ const guestTokenSchema = new Schema<IGuestToken>({
   },
   category: {
     type: String,
-    enum: ['room', 'f&b'],
+    // ✅ ADDED 'cfc'
+    enum: ['room', 'f&b', 'cfc'],
     required: true,
   },
   isUsed: {
@@ -36,19 +37,16 @@ const guestTokenSchema = new Schema<IGuestToken>({
   },
 }, { timestamps: true });
 
-// TTL Index (no change)
+// TTL Index
 guestTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-// Pre-save hook to generate token (no change)
+// Pre-save hook to generate token
 guestTokenSchema.pre<IGuestToken>('save', function(next) {
-  // Only generate token if it's a new document AND token isn't already set
   if (!this.isNew || this.token) {
     return next();
   }
-  
   this.token = crypto.randomBytes(32).toString('hex');
   next();
 });
-
 
 export const GuestToken = mongoose.model<IGuestToken>('GuestToken', guestTokenSchema);

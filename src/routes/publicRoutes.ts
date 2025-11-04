@@ -4,18 +4,37 @@ import { validateToken, submitPublicReview } from '../controllers/publicControll
 
 const router = express.Router();
 
-// --- Validation for public review ---
 const createReviewValidation = [
-  body('category').isIn(['room', 'f&b']).withMessage('Category is required'),
+  body('category').isIn(['room', 'f&b', 'cfc']).withMessage('Category is required'),
   body('token').isHexadecimal().isLength({ min: 64, max: 64 }).withMessage('Invalid token'),
   body('answers').isArray().withMessage('Answers must be an array'),
-  // You can add more validation here if needed
+  body('description').optional().isString().trim(),
+
+  // --- ✅ START: Correct Guest Info Validation ---
+
+  // 1. The guestInfo object must exist for all categories
+  body('guestInfo').exists({ checkFalsy: true }).withMessage('Guest info is required.'),
+
+  // 2. Conditional validation for 'room'
+  body('guestInfo.name')
+    .if(body('category').equals('room'))
+    .notEmpty().withMessage('Guest name is required for room reviews.'),
+  body('guestInfo.phone')
+    .if(body('category').equals('room'))
+    .notEmpty().withMessage('Guest phone is required for room reviews.'),
+  body('guestInfo.roomNumber')
+    .if(body('category').equals('room'))
+    .notEmpty().withMessage('Guest room number is required for room reviews.'),
+
+  // 3. Conditional validation for 'f&b' and 'cfc'
+  body('guestInfo.email')
+    .if(body('category').isIn(['f&b', 'cfc']))
+    .isEmail().withMessage('A valid guest email is required for this category.'),
+
+  // --- ✅ END: Correct Guest Info Validation ---
 ];
 
-// GET /api/public/validate/:token
 router.get('/validate/:token', validateToken);
-
-// POST /api/public/review
 router.post('/review', createReviewValidation, submitPublicReview);
 
 export default router;

@@ -1,26 +1,27 @@
-// src/models/Review.ts
-
 import mongoose from 'mongoose';
 
-// ✅ UPDATED: The answer schema now supports two types of answers
+// Answer schema (includes 'answerText')
 const answerSchema = new mongoose.Schema({
   question: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Question',
     required: true,
   },
-  // For 'rating' type questions
   rating: {
     type: Number,
     min: 0,
     max: 10,
-    optional: true, // Make optional
+    optional: true,
   },
-  // For 'yes_no' type questions
   answerBoolean: {
     type: Boolean,
-    optional: true, // Make optional
+    optional: true,
   },
+  answerText: {
+    type: String,
+    trim: true,
+    optional: true,
+  }
 }, { _id: false });
 
 const reviewSchema = new mongoose.Schema({
@@ -29,28 +30,23 @@ const reviewSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
-  // ✅ ADDED: To distinguish the type of review
   category: {
     type: String,
-    enum: ['room', 'f&b'],
+    enum: ['room', 'f&b', 'cfc'],
     required: true,
   },
   answers: [answerSchema],
-  
-  // ✅ ADDED: Optional text description for the experience
   description: {
     type: String,
     trim: true,
   },
-  
-  // ✅ ADDED: Specific info required only for 'room' reviews
-  roomGuestInfo: {
+  // ✅ UPDATED: Renamed and added email
+  guestInfo: {
     name: { type: String },
     phone: { type: String },
-    roomNumber: { type: String },
+    roomNumber: { type: String }, // For Room No. or Table No.
+    email: { type: String } // ✅ NEW FIELD for F&B/CFC
   },
 }, { timestamps: true });
-
-// ✅ REMOVED: The old 'guestInfo' is replaced by 'roomGuestInfo'
 
 export const Review = mongoose.model('Review', reviewSchema);

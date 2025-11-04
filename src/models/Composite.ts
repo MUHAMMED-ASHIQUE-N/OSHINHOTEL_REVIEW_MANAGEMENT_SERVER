@@ -1,4 +1,3 @@
-// src/models/Composite.ts
 import mongoose from 'mongoose';
 
 const compositeSchema = new mongoose.Schema({
@@ -10,17 +9,20 @@ const compositeSchema = new mongoose.Schema({
   }],
   category: {
     type: String,
-    enum: ['room', 'f&b'],
+    // ✅ ADDED 'cfc'
+    enum: ['room', 'f&b', 'cfc'],
     required: true,
   },
-  // ✅ ADDED: Order field
   order: {
     type: Number,
     default: 0,
   },
+  isActive: { // ✅ ADD THIS
+    type: Boolean,
+    default: true
+  },
 }, { timestamps: true });
 
-// Optional: Add index for sorting
 compositeSchema.index({ category: 1, order: 1 });
 
 export const Composite = mongoose.model('Composite', compositeSchema);

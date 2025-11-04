@@ -53,15 +53,14 @@ app.use("/api/analytics", protect, restrictTo("admin", "viewer"), analyticsRoute
 app.use(
   "/api/reviews",
   protect,
-  restrictTo("staff", "admin", "staff_room", "staff_f&b"),
+  restrictTo("staff", "admin", "staff_room", "staff_f&b", "staff_cfc"), // Add staff_cfc
   reviewRoutes
 );
-
 
 app.use(
   "/api/token",
   protect,
-  restrictTo("staff", "admin", "staff_room", "staff_f&b"),
+  restrictTo("staff", "admin", "staff_room", "staff_f&b", "staff_cfc"), // Add staff_cfc
   tokenRoutes
 );
 // --- 5. SERVE FRONTEND (React Build) ---

@@ -1,4 +1,3 @@
-// routes/managementRoutes.ts
 import express from 'express';
 import { body } from 'express-validator';
 import * as questionController from '../controllers/questionController';
@@ -9,9 +8,10 @@ const router = express.Router();
 // --- Question Routes ---
 const questionValidation = [
   body('text').notEmpty().withMessage('Question text is required'),
-  // ✅ ADDED validation for new fields
-  body('category').isIn(['room', 'f&b']).withMessage('Category must be room or f&b'),
+  body('category').isIn(['room', 'f&b', 'cfc']).withMessage('Category must be room, f&b, or cfc'),
   body('questionType').optional().isIn(['rating', 'yes_no']).withMessage('Question type must be rating or yes_no'),
+  // ✅ ADDED order validation
+  body('order').optional().isInt({ min: 0 }).withMessage('Order must be a non-negative number'),
 ];
 router.route('/questions')
     .post(questionValidation, questionController.createQuestion)
@@ -25,8 +25,9 @@ const compositeValidation = [
   body('name').notEmpty().withMessage('Composite name is required'),
   body('questions').isArray({min: 1}).withMessage('Composites must contain at least one question ID'),
   body('questions.*').isMongoId().withMessage('Invalid question ID in array'),
-  // ✅ ADDED validation for new field
-  body('category').isIn(['room', 'f&b']).withMessage('Category must be room or f&b'),
+  body('category').isIn(['room', 'f&b', 'cfc']).withMessage('Category must be room, f&b, or cfc'),
+  // ✅ ADDED order validation
+  body('order').optional().isInt({ min: 0 }).withMessage('Order must be a non-negative number'),
 ];
 router.route('/composites')
     .post(compositeValidation, compositeController.createComposite)

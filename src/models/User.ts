@@ -6,8 +6,8 @@ export interface IUser {
   fullName: string;
   username: string;
   password?: string;
-  // ✅ CHANGED: Expanded the role enum
-  role: 'staff' | 'admin' | 'viewer' | 'staff_room' | 'staff_f&b';
+  // ✅ ADDED 'staff_cfc'
+  role: 'staff' | 'admin' | 'viewer' | 'staff_room' | 'staff_f&b' | 'staff_cfc';
   isActive: boolean;
 }
 
@@ -17,14 +17,14 @@ const userSchema = new Schema<IUser>({
   password: { type: String, required: true, select: false },
   role: {
     type: String,
-    // ✅ CHANGED: Added new roles to the database enum
-    enum: ['staff', 'admin', 'viewer', 'staff_room', 'staff_f&b'],
+    // ✅ ADDED 'staff_cfc'
+    enum: ['staff', 'admin', 'viewer', 'staff_room', 'staff_f&b', 'staff_cfc'],
     required: true,
   },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
-// Hash password before saving (no changes here)
+// Hash password before saving (no changes)
 userSchema.pre('save', async function(next) {
   const user = this as IUser & Document; 
   if (!user.isModified('password')) return next();

@@ -5,6 +5,12 @@ import { Composite } from '../models/Composite';
 import { Question } from '../models/Question'; // <-- Import Question model
 import mongoose from 'mongoose';
 
+type MatchStage = {
+  $match: {
+    [key: string]: any;
+  }
+};
+
 // Helper to create date match stage
 const getDateMatchStage = (startDate?: string, endDate?: string) => {
   const match: any = {};
@@ -23,12 +29,10 @@ const getDateMatchStage = (startDate?: string, endDate?: string) => {
 };
 
 // ✅ NEW HELPER: Create category match stage
-const getCategoryMatchStage = (category?: string) => {
-  if (category && (category === 'room' || category === 'f&b')) {
-    // Match the 'category' field on the Review model
+const getCategoryMatchStage = (category?: string): MatchStage => {
+  if (category && (category === 'room' || category === 'f&b' || category === 'cfc')) {
     return { $match: { category: category } };
   }
-  // If no category is provided, return an empty stage that does nothing
   return { $match: {} };
 };
 
@@ -39,8 +43,7 @@ export const getStats = async (req: Request, res: Response, next: NextFunction) 
   try {
     const { startDate, endDate, category } = req.query; // Get category
     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-    const categoryMatchStage = getCategoryMatchStage(category as string); // Create stage
-
+    const categoryMatchStage = getCategoryMatchStage(category as string); // ✅ This now supports 'cfc'
     const stats = await Review.aggregate([
       dateMatchStage,
       categoryMatchStage, // ✅ Add stage to pipeline
@@ -72,7 +75,7 @@ export const getQuestionAverages = async (req: Request, res: Response, next: Nex
     const { startDate, endDate, compositeId, category } = req.query; // Get category
     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
     const categoryMatchStage = getCategoryMatchStage(category as string); // Create stage
-    
+
     const pipeline: mongoose.PipelineStage[] = [
       dateMatchStage,
       categoryMatchStage, // ✅ Add stage to pipeline
@@ -234,7 +237,7 @@ export const getCompositeOverTime = async (req: Request, res: Response, next: Ne
     const yearNum = parseInt(year as string);
     const startDate = new Date(`${yearNum}-01-01T00:00:00.000Z`);
     const endDate = new Date(`${yearNum}-12-31T23:59:59.999Z`);
-    
+
     const categoryMatchStage = getCategoryMatchStage(category as string); // Create stage
 
     const pipeline: mongoose.PipelineStage[] = [
@@ -247,14 +250,16 @@ export const getCompositeOverTime = async (req: Request, res: Response, next: Ne
           from: 'composites',
           let: { questionId: '$answers.question' },
           pipeline: [
-            { $match: { 
-              $expr: { 
-                $and: [
-                  { $eq: ['$_id', new mongoose.Types.ObjectId(compositeId as string)] },
-                  { $in: ['$$questionId', '$questions'] }
-                ]
-              } 
-            }},
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$_id', new mongoose.Types.ObjectId(compositeId as string)] },
+                    { $in: ['$$questionId', '$questions'] }
+                  ]
+                }
+              }
+            },
           ],
           as: 'compositeMatch'
         }
@@ -283,13 +288,13 @@ export const getCompositeOverTime = async (req: Request, res: Response, next: Ne
     if (period === 'Weekly') {
       if (!month) return res.status(400).json({ message: 'Month is required for weekly period.' });
       const monthNum = parseInt(month as string); // 0-11
-      
+
       pipeline.unshift(
         { $addFields: { month: { $month: '$createdAt' } } },
         { $match: { month: monthNum + 1 } } // MongoDB months are 1-12
       );
     }
-    
+
     const result = await Review.aggregate(pipeline);
     res.status(200).json({ status: 'success', data: result });
 
@@ -316,14 +321,14 @@ export const getAvailableYears = async (req: Request, res: Response, next: NextF
 
 
 
-// @desc    Get reviews containing Yes/No answers, grouped by review
-// @route   GET /api/analytics/yes-no-responses
+// @desc    Get reviews containing Yes/No answers OR descriptions
+// @route   GET /api/analytics/yes-no-responses
 export const getYesNoResponses = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { startDate, endDate, category } = req.query;
-
-    if (!category || (category !== 'room' && category !== 'f&b')) {
-      return res.status(400).json({ message: 'Valid category (room or f&b) is required.' });
+    // ✅ ADDED 'cfc' to validation
+    if (!category || (category !== 'room' && category !== 'f&b' && category !== 'cfc')) {
+      return res.status(400).json({ message: 'Valid category (room, f&b, or cfc) is required.' });
     }
 
     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
@@ -332,9 +337,19 @@ export const getYesNoResponses = async (req: Request, res: Response, next: NextF
     const pipeline: mongoose.PipelineStage[] = [
       dateMatchStage,
       categoryMatchStage,
-      // 1. Unwind answers
-      { $unwind: '$answers' },
-      // 2. Lookup question details
+      // ✅ 1. Find reviews that have a description OR a "yes_no" answer
+      {
+        $match: {
+          $or: [
+            { 'description': { $exists: true, $ne: "" } },
+            { 'answers.answerBoolean': { $exists: true } }
+          ]
+        }
+      },
+      // 2. Unwind answers, preserving reviews that might have 0 answers (but have a description)
+      // Note: With the match above, this will still unwind rating-only answers.
+      { $unwind: { path: '$answers', preserveNullAndEmptyArrays: true } },
+      // 3. Lookup question details (will be [] if $answers is null)
       {
         $lookup: {
           from: 'questions',
@@ -343,27 +358,27 @@ export const getYesNoResponses = async (req: Request, res: Response, next: NextF
           as: 'questionDetails'
         }
       },
-      // 3. Unwind question details
-      { $unwind: '$questionDetails' },
-      // 4. Match only Yes/No questions
-      {
-        $match: {
-          'questionDetails.questionType': 'yes_no'
-        }
-      },
+      // 4. Unwind question details (will preserve docs where questionDetails is [])
+      { $unwind: { path: '$questionDetails', preserveNullAndEmptyArrays: true } },
       // 5. Group back by the original review ID
       {
         $group: {
           _id: '$_id', // Group by Review ID
           createdAt: { $first: '$createdAt' },
           description: { $first: '$description' },
-          roomGuestInfo: { $first: '$roomGuestInfo' },
-          category: { $first: '$category'}, // Keep category if needed
-          // Collect all Yes/No questions and answers for this review
+          guestInfo: { $first: '$roomGuestInfo' }, // ✅ Use roomGuestInfo
+          category: { $first: '$category' },
           yesNoAnswers: {
             $push: {
-              questionText: '$questionDetails.text',
-              answer: '$answers.answerBoolean' // true/false
+              $cond: [
+                { $eq: ['$questionDetails.questionType', 'yes_no'] },
+                {
+                  questionText: '$questionDetails.text',
+                  answer: '$answers.answerBoolean', // true/false
+                  answerText: '$answers.answerText' // ✅ ADD THIS LINE
+                },
+                "$$REMOVE"
+              ]
             }
           }
         }
@@ -371,14 +386,14 @@ export const getYesNoResponses = async (req: Request, res: Response, next: NextF
       // 6. Project the final structure
       {
         $project: {
-          _id: 1, // Keep the review ID
+          _id: 1,
           createdAt: 1,
           description: 1,
-          roomGuestInfo: 1,
-          yesNoAnswers: 1 // The array of question/answer pairs
+          roomGuestInfo: 1, // ✅ Use roomGuestInfo
+          yesNoAnswers: 1
         }
       },
-      // 7. Sort reviews by date
+      // 8. Sort reviews by date
       { $sort: { createdAt: -1 } }
     ];
 
@@ -392,7 +407,6 @@ export const getYesNoResponses = async (req: Request, res: Response, next: NextF
 };
 
 
-
 export const getQuestionOverTime = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { year, period, month, questionId, category } = req.query;
@@ -402,17 +416,17 @@ export const getQuestionOverTime = async (req: Request, res: Response, next: Nex
       return res.status(400).json({ message: 'Year, period, questionId, and category are required.' });
     }
     if (period !== 'Monthly' && period !== 'Weekly') {
-       return res.status(400).json({ message: 'Period must be Monthly or Weekly for this endpoint.' });
+      return res.status(400).json({ message: 'Period must be Monthly or Weekly for this endpoint.' });
     }
-     if (period === 'Weekly' && (month === undefined || month === null || isNaN(parseInt(month as string)))) {
-       return res.status(400).json({ message: 'Month (0-11) is required for weekly period.' });
+    if (period === 'Weekly' && (month === undefined || month === null || isNaN(parseInt(month as string)))) {
+      return res.status(400).json({ message: 'Month (0-11) is required for weekly period.' });
     }
-     let questionObjectId: mongoose.Types.ObjectId;
-     try {
-       questionObjectId = new mongoose.Types.ObjectId(questionId as string);
-     } catch (e) {
-        return res.status(400).json({ message: 'Invalid questionId format.' });
-     }
+    let questionObjectId: mongoose.Types.ObjectId;
+    try {
+      questionObjectId = new mongoose.Types.ObjectId(questionId as string);
+    } catch (e) {
+      return res.status(400).json({ message: 'Invalid questionId format.' });
+    }
     // --- End Validation ---
 
 
@@ -425,11 +439,13 @@ export const getQuestionOverTime = async (req: Request, res: Response, next: Nex
 
     const pipeline: mongoose.PipelineStage[] = [
       // Match reviews within the year, category, and containing the specific question in answers
-      { $match: {
+      {
+        $match: {
           createdAt: { $gte: yearStartDate, $lt: yearEndDate }, // Use $lt for exclusive end date
           category: category as string,
           'answers.question': questionObjectId
-      }},
+        }
+      },
       // Unwind answers
       { $unwind: '$answers' },
       // Filter the unwound answers to keep only the one for the specific question
@@ -462,7 +478,7 @@ export const getQuestionOverTime = async (req: Request, res: Response, next: Nex
       const monthNum = parseInt(month as string); // 0-11 from frontend
       // Add stages to the beginning of the pipeline
       pipeline.unshift(
-        { $addFields: { monthOfYearUTC: { $month: {date: '$createdAt', timezone: "UTC"} } } }, // Extract month (1-12) using UTC
+        { $addFields: { monthOfYearUTC: { $month: { date: '$createdAt', timezone: "UTC" } } } }, // Extract month (1-12) using UTC
         { $match: { monthOfYearUTC: monthNum + 1 } } // Filter by the specific month (1-12)
       );
     }
@@ -479,67 +495,196 @@ export const getQuestionOverTime = async (req: Request, res: Response, next: Nex
 // @desc    Get average score for a single question over a date range (Yearly/Custom)
 // @route   GET /api/analytics/question-average
 export const getQuestionAverage = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { startDate, endDate, questionId, category } = req.query;
+
+    // --- Validation ---
+    if (!startDate || !endDate || !questionId || !category) {
+      return res.status(400).json({ message: 'startDate, endDate, questionId, and category are required.' });
+    }
+    let questionObjectId: mongoose.Types.ObjectId;
     try {
-        const { startDate, endDate, questionId, category } = req.query;
+      questionObjectId = new mongoose.Types.ObjectId(questionId as string);
+    } catch (e) {
+      return res.status(400).json({ message: 'Invalid questionId format.' });
+    }
+    // --- End Validation ---
 
-        // --- Validation ---
-         if (!startDate || !endDate || !questionId || !category) {
-            return res.status(400).json({ message: 'startDate, endDate, questionId, and category are required.' });
+    const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
+    const categoryMatchStage = getCategoryMatchStage(category as string);
+
+    const pipeline: mongoose.PipelineStage[] = [
+      dateMatchStage,
+      categoryMatchStage,
+      // Match reviews containing the specific question ID in their answers array
+      { $match: { 'answers.question': questionObjectId } },
+      // Unwind the answers array to process each answer document
+      { $unwind: '$answers' },
+      // Match only the specific answer document for the target question ID
+      { $match: { 'answers.question': questionObjectId } },
+      // Group all matching answers together (there's only one question, so _id is constant)
+      {
+        $group: {
+          _id: null, // Group all matched answers into one result
+          averageRating: { $avg: '$answers.rating' }, // Calculate average rating
+          // Get the question ID (will be the same for all grouped docs)
+          questionId: { $first: '$answers.question' }
         }
-         let questionObjectId: mongoose.Types.ObjectId;
-         try {
-           questionObjectId = new mongoose.Types.ObjectId(questionId as string);
-         } catch (e) {
-            return res.status(400).json({ message: 'Invalid questionId format.' });
-         }
-        // --- End Validation ---
+      },
+      {
+        $lookup: { // Join with questions collection to get the name (text)
+          from: 'questions',
+          localField: 'questionId', // Use the questionId saved in $group
+          foreignField: '_id',
+          as: 'questionDetails'
+        }
+      },
+      // If no reviews matched, $lookup might produce empty questionDetails, handle this
+      { $unwind: { path: '$questionDetails', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0, // Exclude the grouping ID
+          // Use $ifNull to handle cases where no reviews were found
+          questionId: { $ifNull: ['$questionId', questionObjectId] }, // Return original ID if lookup failed
+          name: { $ifNull: ['$questionDetails.text', 'N/A'] }, // Return 'N/A' if lookup failed
+          value: { $ifNull: [{ $round: ['$averageRating', 2] }, null] } // Return null average if no reviews
+        }
+      }
+    ];
 
-        const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
-        const categoryMatchStage = getCategoryMatchStage(category as string);
+    const result = await Review.aggregate(pipeline);
 
-        const pipeline: mongoose.PipelineStage[] = [
-            dateMatchStage,
-            categoryMatchStage,
-            // Match reviews containing the specific question ID in their answers array
-            { $match: { 'answers.question': questionObjectId } },
-            // Unwind the answers array to process each answer document
-            { $unwind: '$answers' },
-            // Match only the specific answer document for the target question ID
-            { $match: { 'answers.question': questionObjectId } },
-            // Group all matching answers together (there's only one question, so _id is constant)
-            {
-                $group: {
-                    _id: null, // Group all matched answers into one result
-                    averageRating: { $avg: '$answers.rating' }, // Calculate average rating
-                     // Get the question ID (will be the same for all grouped docs)
-                    questionId: { $first: '$answers.question' }
-                }
-            },
-             {
-                $lookup: { // Join with questions collection to get the name (text)
-                    from: 'questions',
-                    localField: 'questionId', // Use the questionId saved in $group
-                    foreignField: '_id',
-                    as: 'questionDetails'
-                }
-            },
-            // If no reviews matched, $lookup might produce empty questionDetails, handle this
-             { $unwind: { path: '$questionDetails', preserveNullAndEmptyArrays: true } },
-            {
-                $project: {
-                    _id: 0, // Exclude the grouping ID
-                    // Use $ifNull to handle cases where no reviews were found
-                    questionId: { $ifNull: ['$questionId', questionObjectId] }, // Return original ID if lookup failed
-                    name: { $ifNull: ['$questionDetails.text', 'N/A'] }, // Return 'N/A' if lookup failed
-                    value: { $ifNull: [ { $round: ['$averageRating', 2] }, null ] } // Return null average if no reviews
-                }
-            }
-        ];
+    // Send the single result object, or an object with null value if no data
+    res.status(200).json({ status: 'success', data: result[0] || { questionId: questionId, name: 'N/A', value: null } });
 
-        const result = await Review.aggregate(pipeline);
-
-        // Send the single result object, or an object with null value if no data
-        res.status(200).json({ status: 'success', data: result[0] || { questionId: questionId, name: 'N/A', value: null } });
-
-    } catch (error) { next(error); }
+  } catch (error) { next(error); }
 };
+
+
+
+export const getLowRatedReviewsByQuestion = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { questionId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    // Validate questionId
+    let questionObjectId: mongoose.Types.ObjectId;
+    try {
+      questionObjectId = new mongoose.Types.ObjectId(questionId as string);
+    } catch (e) {
+      return res.status(400).json({ message: 'Invalid questionId format.' });
+    }
+
+    const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
+
+    const pipeline: mongoose.PipelineStage[] = [
+      // 1. Apply date filter (may be {} if no dates provided)
+      dateMatchStage,
+      // 2. Ensure the review has an answers element with this question AND rating <= 5 (same array element)
+      {
+        $match: {
+          answers: {
+            $elemMatch: {
+              question: questionObjectId,
+              rating: { $lte: 5 }
+            }
+          }
+        }
+      },
+      // 3. Unwind answers to work with the matching element
+      { $unwind: '$answers' },
+      // 4. Keep only the answer element for the specific question with rating <= 5
+      {
+        $match: {
+          'answers.question': questionObjectId,
+          'answers.rating': { $lte: 5 }
+        }
+      },
+      // 5. Lookup question details (text)
+      {
+        $lookup: {
+          from: 'questions',
+          localField: 'answers.question',
+          foreignField: '_id',
+          as: 'questionDetails'
+        }
+      },
+      { $unwind: { path: '$questionDetails', preserveNullAndEmptyArrays: true } },
+      // 6. Project & coalesce guest fields from possible field names
+      {
+        $project: {
+          _id: 1,
+          date: '$createdAt',
+          category: 1,
+          questionId: '$answers.question',
+          questionText: '$questionDetails.text',
+          point: '$answers.rating',
+          // coalesce guest name: supports roomGuestInfo.name OR roomGuestInfo.name OR guest_name
+          guestName: {
+            $ifNull: [
+              '$roomGuestInfo.name',
+              { $ifNull: ['$roomGuestInfo.name', '$guest_name'] }
+            ]
+          },
+          phone: {
+            $ifNull: [
+              '$roomGuestInfo.phone',
+              '$roomGuestInfo.phone'
+            ]
+          },
+          roomNumber: {
+            $ifNull: [
+              '$roomGuestInfo.roomNumber',
+              '$roomGuestInfo.roomNumber',
+              '$roomNumber'
+            ]
+          },
+          email: {
+            $ifNull: [
+              '$roomGuestInfo.email',
+              '$roomGuestInfo.email',
+              '$email'
+            ]
+          }
+        }
+      },
+      // 7. Sort: lowest rating first, newest first for same rating
+      { $sort: { point: 1, date: -1 } }
+    ];
+
+    const rawResults = await Review.aggregate(pipeline);
+
+    // (Optional) debug: dump a sample so you can inspect the exact fields stored in DB
+    // console.log('sample raw result:', rawResults[0]);
+
+    // 8. Map to category-specific shape for response
+    // const mapped = rawResults.map((r: any) => {
+    //   if (r.category === 'room') {
+    //     return {
+    //       reviewId: r._id,
+    //       date: r.date,
+    //       questionId: r.questionId,
+    //       questionText: r.questionText || null,
+    //       guestName: r.guestName || null,
+    //       phone: r.phone || null,
+    //       roomNumber: r.roomNumber || null,
+    //       point: r.point
+    //     };
+    //   } else { // f&b or cfc
+    //     return {
+    //       reviewId: r._id,
+    //       date: r.date,
+    //       questionId: r.questionId,
+    //       questionText: r.questionText || null,
+    //       email: r.email || null,
+    //       point: r.point
+    //     };
+    //   }
+    // });
+
+    res.status(200).json({ status: 'success', count: rawResults.length, data: rawResults });
+  } catch (error) {
+    next(error);
+  }
+};
+
