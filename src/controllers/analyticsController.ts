@@ -654,34 +654,6 @@ export const getLowRatedReviewsByQuestion = async (req: Request, res: Response, 
 
     const rawResults = await Review.aggregate(pipeline);
 
-    // (Optional) debug: dump a sample so you can inspect the exact fields stored in DB
-    // console.log('sample raw result:', rawResults[0]);
-
-    // 8. Map to category-specific shape for response
-    // const mapped = rawResults.map((r: any) => {
-    //   if (r.category === 'room') {
-    //     return {
-    //       reviewId: r._id,
-    //       date: r.date,
-    //       questionId: r.questionId,
-    //       questionText: r.questionText || null,
-    //       guestName: r.guestName || null,
-    //       phone: r.phone || null,
-    //       roomNumber: r.roomNumber || null,
-    //       point: r.point
-    //     };
-    //   } else { // f&b or cfc
-    //     return {
-    //       reviewId: r._id,
-    //       date: r.date,
-    //       questionId: r.questionId,
-    //       questionText: r.questionText || null,
-    //       email: r.email || null,
-    //       point: r.point
-    //     };
-    //   }
-    // });
-
     res.status(200).json({ status: 'success', count: rawResults.length, data: rawResults });
   } catch (error) {
     next(error);
