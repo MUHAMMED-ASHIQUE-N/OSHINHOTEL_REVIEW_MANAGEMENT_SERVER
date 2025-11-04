@@ -575,29 +575,30 @@ export const getLowRatedReviewsByQuestion = async (req: Request, res: Response, 
       return res.status(400).json({ message: 'Invalid questionId format.' });
     }
 
+    // Get the date match stage (assuming getDateMatchStage is defined elsewhere)
     const dateMatchStage = getDateMatchStage(startDate as string, endDate as string);
 
     const pipeline: mongoose.PipelineStage[] = [
-      // 1. Apply date filter (may be {} if no dates provided)
+      // 1. Apply date filter
       dateMatchStage,
-      // 2. Ensure the review has an answers element with this question AND rating <= 5 (same array element)
+      // 2. Find reviews with a low-rated answer for this question
       {
         $match: {
           answers: {
             $elemMatch: {
               question: questionObjectId,
-              rating: { $lte: 5 }
+              rating: { $lte: 5, $gt: 0 } // Only 1-5, ignore 0 (N/A)
             }
           }
         }
       },
-      // 3. Unwind answers to work with the matching element
+      // 3. Unwind answers
       { $unwind: '$answers' },
-      // 4. Keep only the answer element for the specific question with rating <= 5
+      // 4. Keep only the specific low-rated answer
       {
         $match: {
           'answers.question': questionObjectId,
-          'answers.rating': { $lte: 5 }
+          'answers.rating': { $lte: 5, $gt: 0 }
         }
       },
       // 5. Lookup question details (text)
@@ -610,7 +611,9 @@ export const getLowRatedReviewsByQuestion = async (req: Request, res: Response, 
         }
       },
       { $unwind: { path: '$questionDetails', preserveNullAndEmptyArrays: true } },
-      // 6. Project & coalesce guest fields from possible field names
+      
+      // ✅ --- START: CORRECTED $project stage ---
+      // 6. Project the fields, checking the correct 'guestInfo' field
       {
         $project: {
           _id: 1,
@@ -619,35 +622,16 @@ export const getLowRatedReviewsByQuestion = async (req: Request, res: Response, 
           questionId: '$answers.question',
           questionText: '$questionDetails.text',
           point: '$answers.rating',
-          // coalesce guest name: supports roomGuestInfo.name OR roomGuestInfo.name OR guest_name
-          guestName: {
-            $ifNull: [
-              '$roomGuestInfo.name',
-              { $ifNull: ['$roomGuestInfo.name', '$guest_name'] }
-            ]
-          },
-          phone: {
-            $ifNull: [
-              '$roomGuestInfo.phone',
-              '$roomGuestInfo.phone'
-            ]
-          },
-          roomNumber: {
-            $ifNull: [
-              '$roomGuestInfo.roomNumber',
-              '$roomGuestInfo.roomNumber',
-              '$roomNumber'
-            ]
-          },
-          email: {
-            $ifNull: [
-              '$roomGuestInfo.email',
-              '$roomGuestInfo.email',
-              '$email'
-            ]
-          }
+          
+          // Use $ifNull to safely get values from the 'guestInfo' object
+          guestName: { $ifNull: ['$guestInfo.name', null] },
+          phone: { $ifNull: ['$guestInfo.phone', null] },
+          roomNumber: { $ifNull: ['$guestInfo.roomNumber', null] },
+          email: { $ifNull: ['$guestInfo.email', null] }
         }
       },
+      // ✅ --- END: CORRECTED $project stage ---
+
       // 7. Sort: lowest rating first, newest first for same rating
       { $sort: { point: 1, date: -1 } }
     ];
@@ -659,4 +643,3 @@ export const getLowRatedReviewsByQuestion = async (req: Request, res: Response, 
     next(error);
   }
 };
-
