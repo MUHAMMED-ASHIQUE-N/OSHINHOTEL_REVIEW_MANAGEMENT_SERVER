@@ -40,10 +40,10 @@ export const submitPublicReview = async (req: Request, res: Response, next: Next
   session.startTransaction();
 
   try {
+    // ✅ FIX: Read 'guestInfo' from the body
     const { token, category, answers, description, guestInfo } = req.body;
 
     if (!token) {
-        // You can abort the transaction here too if you want
         await session.abortTransaction();
         session.endSession();
         return res.status(400).json({ message: 'Token is required.' });
@@ -55,27 +55,22 @@ export const submitPublicReview = async (req: Request, res: Response, next: Next
       expiresAt: { $gt: new Date() }
     }).session(session);
 
-    // ✅ --- THIS IS THE FIX ---
-    // You must check if the token was found.
     if (!guestToken) {
       await session.abortTransaction();
       session.endSession();
       return res.status(404).json({ message: 'This link is invalid, expired, or has already been used.' });
     }
-    // ✅ --- END FIX ---
 
-    // Now TypeScript knows guestToken is not null
     const newReview = new Review({
       staff: guestToken.staff,
       category,
       answers, 
       description,
-      guestInfo: guestInfo,
+      guestInfo: guestInfo, // ✅ FIX: Save the 'guestInfo' object
     });
     
     await newReview.save({ session });
 
-    // TypeScript knows guestToken is not null here
     guestToken.isUsed = true;
     await guestToken.save({ session });
 

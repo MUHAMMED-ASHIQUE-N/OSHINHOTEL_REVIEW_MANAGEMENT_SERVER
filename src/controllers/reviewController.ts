@@ -1,5 +1,3 @@
-
-// src/controllers/reviewController.ts
 import { Request, Response, NextFunction } from 'express';
 import { validationResult } from 'express-validator';
 import { Question } from '../models/Question';
@@ -14,7 +12,8 @@ interface RequestWithUser extends Request {
 export const getQuestionsByCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const category = req.params.category;
-   if (category !== 'room' && category !== 'f&b' && category !== 'cfc') {
+    // ✅ This is correct (includes cfc)
+    if (category !== 'room' && category !== 'f&b' && category !== 'cfc') {
       return res.status(400).json({ message: 'Invalid category.' });
     }
     
@@ -23,28 +22,25 @@ export const getQuestionsByCategory = async (req: Request, res: Response, next: 
   } catch (error) { next(error); }
 };
 
-// src/controllers/reviewController.ts
-
 export const createReview = async (req: RequestWithUser, res: Response, next: NextFunction) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
 
-  try {
-    // ✅ FIX 1: Read 'guestInfo' from the body
-    const { category, answers, description, guestInfo } = req.body; 
-    
-    const newReview = await Review.create({
-      staff: req.user?._id,
-      category,
-      answers,
-      description,
-      // ✅ FIX 2: Save the 'guestInfo' object.
-      // (This assumes your Mongoose model's field is named 'guestInfo')
-      guestInfo: guestInfo, 
-    });
+  try {
+    // ✅ FIX: Read 'guestInfo' from the body, not 'roomGuestInfo'
+    const { category, answers, description, guestInfo } = req.body;
+    
+    const newReview = await Review.create({
+      staff: req.user?._id, // Get staff ID from the logged-in user
+      category,
+      answers, // The answers array now includes 'answerText'
+      description,
+      // ✅ FIX: Save the 'guestInfo' object
+      guestInfo: guestInfo, 
+    });
 
-    res.status(201).json({ status: 'success', data: { review: newReview } });
-  } catch (error) { next(error); }
+    res.status(201).json({ status: 'success', data: { review: newReview } });
+  } catch (error) { next(error); }
 };

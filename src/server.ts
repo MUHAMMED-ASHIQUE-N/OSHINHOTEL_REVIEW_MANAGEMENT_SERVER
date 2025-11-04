@@ -25,7 +25,12 @@ const app = express();
 
 // --- 2. GLOBAL MIDDLEWARE ---
 app.use(helmet());
-app.use(cors());
+app.use(
+  cors({
+    origin: ["https://oshin-admin-panel-one.vercel.app"],
+    credentials: true,
+  })
+);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
