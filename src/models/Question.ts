@@ -1,3 +1,4 @@
+// src/models/Question.ts
 import mongoose from 'mongoose';
 
 const questionSchema = new mongoose.Schema({

@@ -1,3 +1,4 @@
+// src/models/Composite.ts
 import mongoose from 'mongoose';
 
 const compositeSchema = new mongoose.Schema({

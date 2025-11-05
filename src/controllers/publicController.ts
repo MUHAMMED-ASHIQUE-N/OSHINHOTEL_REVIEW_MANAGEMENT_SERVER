@@ -1,3 +1,4 @@
+// src/controllers/publicController.ts
 import { Request, Response, NextFunction } from 'express';
 import { validationResult } from 'express-validator';
 import { GuestToken } from '../models/GuestToken';
@@ -8,13 +9,13 @@ export const validateToken = async (req: Request, res: Response, next: NextFunct
   try {
     const { token } = req.params;
     if (!token || token.length !== 64) {
-       return res.status(400).json({ message: 'Invalid token format.' });
+      return res.status(400).json({ message: 'Invalid token format.' });
     }
-    
+
     const guestToken = await GuestToken.findOne({
       token: token,
       isUsed: false,
-      expiresAt: { $gt: new Date() } 
+      expiresAt: { $gt: new Date() }
     });
 
     if (!guestToken) {
@@ -44,9 +45,9 @@ export const submitPublicReview = async (req: Request, res: Response, next: Next
     const { token, category, answers, description, guestInfo } = req.body;
 
     if (!token) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({ message: 'Token is required.' });
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ message: 'Token is required.' });
     }
 
     const guestToken = await GuestToken.findOne({
@@ -60,15 +61,15 @@ export const submitPublicReview = async (req: Request, res: Response, next: Next
       session.endSession();
       return res.status(404).json({ message: 'This link is invalid, expired, or has already been used.' });
     }
-
     const newReview = new Review({
       staff: guestToken.staff,
+      hotelId: guestToken.hotelId,
       category,
-      answers, 
+      answers,
       description,
-      guestInfo: guestInfo, // ✅ FIX: Save the 'guestInfo' object
+      guestInfo: guestInfo,
     });
-    
+
     await newReview.save({ session });
 
     guestToken.isUsed = true;

@@ -1,3 +1,5 @@
+// src/controllers/tokenController.ts
+
 import { Request, Response, NextFunction } from 'express';
 import { GuestToken } from '../models/GuestToken';
 import { IUser } from '../models/User';
@@ -26,10 +28,11 @@ export const generateToken = async (req: RequestWithUser, res: Response, next: N
     } else {
       return res.status(403).json({ message: 'User role cannot generate tokens.' });
     }
-    
+
     const guestToken = new GuestToken({
       staff: staffUser._id,
       category: category,
+      hotelId: staffUser.hotelId // <-- ADD THIS
     });
 
     await guestToken.save();

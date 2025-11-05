@@ -1,3 +1,4 @@
+// src/models/Review.ts
 import mongoose from 'mongoose';
 
 // Answer schema (includes 'answerText')
@@ -34,6 +35,11 @@ const reviewSchema = new mongoose.Schema({
     type: String,
     enum: ['room', 'f&b', 'cfc'],
     required: true,
+  },hotelId: { // <-- ADD THIS
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: true,
+    index: true, // Good for performance
   },
   answers: [answerSchema],
   description: {

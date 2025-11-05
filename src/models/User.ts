@@ -1,3 +1,4 @@
+// src/models/User.ts
 import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -9,6 +10,7 @@ export interface IUser {
   // ✅ ADDED 'staff_cfc'
   role: 'staff' | 'admin' | 'viewer' | 'staff_room' | 'staff_f&b' | 'staff_cfc';
   isActive: boolean;
+  hotelId?: mongoose.Schema.Types.ObjectId;
 }
 
 const userSchema = new Schema<IUser>({
@@ -20,6 +22,10 @@ const userSchema = new Schema<IUser>({
     // ✅ ADDED 'staff_cfc'
     enum: ['staff', 'admin', 'viewer', 'staff_room', 'staff_f&b', 'staff_cfc'],
     required: true,
+  },hotelId: { // <-- ADD THIS
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel',
+    required: false, // Optional: A super-admin might not have a hotelId
   },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
