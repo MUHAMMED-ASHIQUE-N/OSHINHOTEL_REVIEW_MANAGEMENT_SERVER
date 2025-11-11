@@ -1,4 +1,3 @@
-// src/controllers/reviewController.ts
 import { Request, Response, NextFunction } from 'express';
 import { validationResult } from 'express-validator';
 import { Question } from '../models/Question';
@@ -39,7 +38,7 @@ export const createReview = async (req: RequestWithUser, res: Response, next: Ne
       category,
       answers,
       description,
-      guestInfo: guestInfo,
+      guestInfo: guestInfo, // This is still correct, the frontend will just send a different guestInfo object
     });
 
     res.status(201).json({ status: 'success', data: { review: newReview } });

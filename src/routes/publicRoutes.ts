@@ -27,9 +27,12 @@ const createReviewValidation = [
     .notEmpty().withMessage('Guest room number is required for room reviews.'),
 
   // 3. Conditional validation for 'f&b' and 'cfc'
-  body('guestInfo.email')
+  body('guestInfo.name')
     .if(body('category').isIn(['f&b', 'cfc']))
-    .isEmail().withMessage('A valid guest email is required for this category.'),
+    .notEmpty().withMessage('Guest name is required for this category.'),
+  body('guestInfo.phone')
+    .if(body('category').isIn(['f&b', 'cfc']))
+    .notEmpty().withMessage('Guest phone is required for this category.'),
 
   // --- ✅ END: Correct Guest Info Validation ---
 ];

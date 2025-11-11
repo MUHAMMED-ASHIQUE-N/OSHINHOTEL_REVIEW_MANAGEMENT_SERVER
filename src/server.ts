@@ -39,7 +39,8 @@ app.options(/.*/, cors({
   origin: "https://oshin-admin-panel-one.vercel.app",
   credentials: true,
 }));
-// app.use(cors());//
+// app.use(cors())
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,

@@ -1,4 +1,3 @@
-// src/models/Review.ts
 import mongoose from 'mongoose';
 
 // Answer schema (includes 'answerText')
@@ -46,12 +45,12 @@ const reviewSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
-  // ✅ UPDATED: Renamed and added email
+  // 🔥 UPDATED: Renamed and removed email
   guestInfo: {
     name: { type: String },
     phone: { type: String },
-    roomNumber: { type: String }, // For Room No. or Table No.
-    email: { type: String } // ✅ NEW FIELD for F&B/CFC
+    roomNumber: { type: String }, // For Room No.
+    // ❌ REMOVED email
   },
 }, { timestamps: true });
 
