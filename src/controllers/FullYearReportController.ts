@@ -15,10 +15,10 @@
     export const getAvailableYearss = async (req: Request, res: Response) => {
     try {
         const { category } = req.query;
-
-        if (!category || (category !== 'room' && category !== 'f&b')) {
-        return res.status(400).json({ message: 'Invalid or missing category. Must be "room" or "f&b".' });
-        }
+         const validCategories = ['room', 'f&b', 'cfc'];
+    if (!category || !validCategories.includes(category as string)) {
+      return res.status(400).json({ message: 'Invalid or missing category. Must be "room", "f&b", or "cfc".' });
+    }
 
         const yearsResult = await Review.aggregate([
         {
@@ -66,9 +66,10 @@
         const { category, year } = req.query;
 
         // --- Validation ---
-        if (!category || (category !== 'room' && category !== 'f&b')) {
-        return res.status(400).json({ message: 'Invalid or missing category. Must be "room" or "f&b".' });
-        }
+     const validCategories = ['room', 'f&b', 'cfc'];
+    if (!category || !validCategories.includes(category as string)) {
+      return res.status(400).json({ message: 'Invalid or missing category. Must be "room", "f&b", or "cfc".' });
+    }
 
         const yearNum = parseInt(year as string, 10);
         if (isNaN(yearNum) || yearNum < 2000 || yearNum > 3000) {
