@@ -6,7 +6,7 @@ import hotelRoutes from './hotelRoutes'; // <-- ADD THIS
 
 const router = express.Router();
 
-// Protect all admin routes
+// Protect all admin route
 router.use(protect);
 router.use(restrictTo('admin')); // <-- This correctly protects all routes for 'admin'
 
@@ -14,7 +14,6 @@ router.use(restrictTo('admin')); // <-- This correctly protects all routes for '
 router.use('/users', userRoutes);
 router.use('/management', managementRoutes);
 
-// <-- ADD THIS -->
 // Mount hotel management routes at /api/admin/hotels
 router.use('/hotels', hotelRoutes); 
 

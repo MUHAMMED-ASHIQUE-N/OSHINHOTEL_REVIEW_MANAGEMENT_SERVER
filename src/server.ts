@@ -25,21 +25,21 @@ const app = express();
 
 // --- 2. GLOBAL MIDDLEWARE ---
 app.use(helmet());
-// app.use(
-//   cors({
-//     origin: "https://oshin-admin-panel-one.vercel.app",
-//     credentials: true,
-//     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-//     allowedHeaders: ["Content-Type", "Authorization"],
-//   })
-// );
+app.use(
+  cors({
+    origin: "https://oshin-admin-panel-one.vercel.app",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
-// // ✅ allow preflight from Safari
-// app.options(/.*/, cors({
-//   origin: "https://oshin-admin-panel-one.vercel.app",
-//   credentials: true,
-// }));
-app.use(cors());
+// ✅ allow preflight from Safari
+app.options(/.*/, cors({
+  origin: "https://oshin-admin-panel-one.vercel.app",
+  credentials: true,
+}));
+// app.use(cors());//
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -52,6 +52,7 @@ app.use("/api", limiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // app.use(mongoSanitize());
+//updated
 
 // --- 3. DATABASE CONNECTION ---
 connectDB();
