@@ -25,21 +25,29 @@ const app = express();
 
 // --- 2. GLOBAL MIDDLEWARE ---
 app.use(helmet());
+const allowedOrigins = [
+  'https://oshin-admin-panel-one.vercel.app', // Your production URL
+  'https://www.oshin-admin-panel-one.vercel.app', // Your production URL with www
+  'http://localhost:3000' // For your own local development
+];
+
 app.use(
   cors({
-    origin: "https://oshin-admin-panel-one.vercel.app",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
-// ✅ allow preflight from Safari
-app.options(/.*/, cors({
-  origin: "https://oshin-admin-panel-one.vercel.app",
-  credentials: true,
-}));
-// app.use(cors())
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
