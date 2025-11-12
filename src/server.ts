@@ -95,11 +95,11 @@ app.get("/api/health", (req, res) => {
 // --- 5. SERVE FRONTEND (React Build) ---
 const __dirname1 = path.resolve(); // ✅ get absolute path safely
 
-app.use(express.static(path.join(__dirname1, "client", "build"))); // adjust if build folder is elsewhere
-// ✅ Catch-all route: send index.html for any non-API request
-app.get(/.*/, (req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname1, "client", "build", "index.html"));
-});
+// app.use(express.static(path.join(__dirname1, "client", "build"))); // adjust if build folder is elsewhere
+// // ✅ Catch-all route: send index.html for any non-API request
+// app.get(/.*/, (req: Request, res: Response) => {
+//   res.sendFile(path.join(__dirname1, "client", "build", "index.html"));
+// });
 
 // --- 6. ERROR HANDLING ---
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
