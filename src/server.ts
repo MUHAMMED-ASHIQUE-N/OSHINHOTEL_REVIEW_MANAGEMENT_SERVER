@@ -17,6 +17,7 @@ import reviewRoutes from "./routes/reviewRoutes";
 import tokenRoutes from "./routes/tokenRoutes"; 
 import publicRoutes from "./routes/publicRoutes"; 
 import { protect, restrictTo } from "./middleware/authMiddleware";
+import { getQuestionsByCategory } from "./controllers/reviewController";
 
 // --- 1. Load Environment Variables ---
 dotenv.config();
@@ -64,6 +65,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // --- 3. DATABASE CONNECTION ---
 connectDB();
+
+app.get("/api/reviews/questions/:category", getQuestionsByCategory);
 
 // --- 4. API ROUTES ---
 app.use("/api/auth", authRoutes);
