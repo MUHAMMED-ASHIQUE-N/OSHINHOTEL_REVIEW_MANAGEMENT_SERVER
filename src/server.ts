@@ -28,7 +28,7 @@ app.use(helmet());
 const allowedOrigins = [
   'https://oshin-admin-panel-one.vercel.app', // Your production URL
   'https://www.oshin-admin-panel-one.vercel.app', // Your production URL with www
-  'http://localhost:3000' // For your own local development
+  'http://localhost:5173' // For your own local development
 ];
 
 app.use(
@@ -86,6 +86,10 @@ app.use(
   restrictTo("staff", "admin", "staff_room", "staff_f&b", "staff_cfc"), // Add staff_cfc
   tokenRoutes
 );
+
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok", message: "Server is awake!" });
+});
 // --- 5. SERVE FRONTEND (React Build) ---
 const __dirname1 = path.resolve(); // ✅ get absolute path safely
 
