@@ -12,11 +12,12 @@ export const validateToken = async (req: Request, res: Response, next: NextFunct
       return res.status(400).json({ message: 'Invalid token format.' });
     }
 
+    // UPDATED: Populate hotelId to get { _id, name }
     const guestToken = await GuestToken.findOne({
       token: token,
       isUsed: false,
       expiresAt: { $gt: new Date() }
-    });
+    }).populate('hotelId'); // NEW: Populate ref to Hotel model
 
     if (!guestToken) {
       return res.status(404).json({ message: 'This link is invalid or has expired.' });
@@ -24,13 +25,14 @@ export const validateToken = async (req: Request, res: Response, next: NextFunct
 
     res.status(200).json({
       status: 'success',
-      category: guestToken.category, // Will now also return 'cfc'
+      category: guestToken.category,
+      // NEW: Return populated hotelId
+      hotelId: guestToken.hotelId, // e.g., { _id: '...', name: 'Oshin Wayanad Hotel' }
     });
   } catch (error) {
     next(error);
   }
 };
-
 export const submitPublicReview = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
